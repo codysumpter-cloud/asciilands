@@ -1,0 +1,11 @@
+name = "glyphbound-coop"
+main = "server/worker-built.mjs"
+compatibility_date = "2026-11-16"
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "WorldRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["WorldRoom"]

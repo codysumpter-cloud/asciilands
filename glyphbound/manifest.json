@@ -1,0 +1,10 @@
+{
+  "name": "Glyphbound",
+  "version": "0.3.0",
+  "kind": "single-player ASCII survival game with optional guest co-op",
+  "entrypoints": ["index.html", "glyphbound.html"],
+  "author": "Prismtek",
+  "dependencies": [],
+  "storage": {"solo": "localStorage", "guest_rooms": "Cloudflare Durable Objects"},
+  "engine": "original browser JavaScript; Asciicker C++ not yet ported"
+}
