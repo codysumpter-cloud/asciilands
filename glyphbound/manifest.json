@@ -1,10 +1,29 @@
 {
   "name": "Glyphbound",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "kind": "single-player ASCII survival game with optional guest co-op",
-  "entrypoints": ["index.html", "glyphbound.html"],
+  "entrypoints": [
+    "index.html",
+    "glyphbound.html"
+  ],
   "author": "Prismtek",
   "dependencies": [],
-  "storage": {"solo": "localStorage", "guest_rooms": "Cloudflare Durable Objects"},
-  "engine": "original browser JavaScript; Asciicker C++ not yet ported"
+  "storage": {
+    "solo": "localStorage",
+    "guest_rooms": "Cloudflare Durable Objects"
+  },
+  "engine": "original browser JavaScript; Asciicker C++ not yet ported",
+  "ui": {
+    "contracts": [
+      "prismtek.pixui-widgets/v1",
+      "prismtek.pixel-ui/v1"
+    ],
+    "browser_runtime": "pixui-web.js (DOM adapter, not Phaser 4)",
+    "native_import": "Prismtek Engine Studio PixUI importer via ui/*.pixui.json"
+  },
+  "gameplay_additions": [
+    "campfire-rest",
+    "scouting-markers",
+    "field-quickbar"
+  ]
 }

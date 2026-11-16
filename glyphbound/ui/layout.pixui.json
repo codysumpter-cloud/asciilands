@@ -1,0 +1,63 @@
+{
+  "schema": "prismtek.pixui-widgets/v1",
+  "engine": "phaser4",
+  "widgets": [
+    {
+      "id": "glyphbound-health",
+      "kind": "progress",
+      "label": "HEALTH",
+      "anchor": "top-left",
+      "binding": "health",
+      "value": 1,
+      "checked": false,
+      "choices": []
+    },
+    {
+      "id": "glyphbound-level",
+      "kind": "text",
+      "label": "LEVEL",
+      "anchor": "top-center",
+      "binding": "level",
+      "value": 0.5,
+      "checked": false,
+      "choices": []
+    },
+    {
+      "id": "glyphbound-objectives",
+      "kind": "quest",
+      "label": "CAMP MILESTONES",
+      "anchor": "top-right",
+      "binding": "remaining",
+      "value": 0.5,
+      "checked": false,
+      "choices": []
+    },
+    {
+      "id": "glyphbound-hotbar",
+      "kind": "hotbar",
+      "label": "FIELD ACTIONS",
+      "anchor": "bottom-center",
+      "value": 0.5,
+      "checked": false,
+      "choices": [
+        "Gather",
+        "Attack",
+        "Craft",
+        "Build",
+        "Pack",
+        "Map",
+        "Rest",
+        "Scout"
+      ]
+    },
+    {
+      "id": "glyphbound-minimap",
+      "kind": "minimap",
+      "label": "LIVE MAP",
+      "anchor": "top-right",
+      "value": 0.5,
+      "checked": false,
+      "choices": []
+    }
+  ]
+}

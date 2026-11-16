@@ -9,6 +9,7 @@ html=(root/'index.html').read_text(encoding='utf-8').rstrip('\n')
 for old,replacement in [
  ('<link rel="stylesheet" href="style.css">','<style>\n'+(root/'style.css').read_text(encoding='utf-8').rstrip('\n')+'\n</style>'),
  ('<script src="network.js"></script>','<script>\n'+(root/'network.js').read_text(encoding='utf-8').rstrip('\n')+'\n</script>'),
+ ('<script src="pixui-web.js"></script>','<script>\n'+(root/'pixui-web.js').read_text(encoding='utf-8').rstrip('\n')+'\n</script>'),
  ('<script src="game.js"></script>','<script>\n'+(root/'game.js').read_text(encoding='utf-8').rstrip('\n')+'\n</script>')]:
  if html.count(old)!=1: raise RuntimeError('Missing or duplicate source tag: '+old)
  html=html.replace(old,replacement)

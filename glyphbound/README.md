@@ -1,4 +1,4 @@
-# Glyphbound — Living ASCII Wilderness (v0.6)
+# Glyphbound — Living ASCII Wilderness (v0.7)
 
 **Play:** `glyphbound.html` is a dependency-free offline browser game. `index.html` + `style.css` + `network.js` + `game.js` are the editable sources.
 
@@ -87,3 +87,14 @@ Player sprites now render about 3.2 ASCII rows tall by default rather than occup
 - Adds a default animated six-column character drawn with ASCII symbols and earth-toned ink, while keeping the original pixel-art sprite available under **Settings → Character art**. Character scale remains configurable.
 - Existing solo saves, co-op rooms, gameplay inventory, crafting, combat, and movement remain backward compatible. This is CPU-based software shading, not a physically-based renderer or an Asciicker C++ port.
 - Test via `python test_palette.py`, `python scripts/verify.py`, and the existing browser integration scripts.
+
+
+## v0.7 — PixUI field kit, better lighting, and survival actions
+
+- New **PixUI-contract field kit**: eight accessible quick actions, live health/stamina/mana meters, contextual target and threat label, and a compact mobile toolbar. The browser adapter is `pixui-web.js` and uses native HTML/CSS because this game is a standalone JavaScript canvas renderer; it does **not** secretly include the Phaser 4 PixUI rendering library.
+- The interchange artifacts **`ui/layout.pixui.json`** (`prismtek.pixui-widgets/v1`) and **`ui/theme.pixui.json`** (`prismtek.pixel-ui/v1`) follow the same documented contract used by Prismtek Engine's Studio PixUI importer (`codysumpter-cloud/3d-pixel-demo`). The layouts and six-color theme can be imported into that native editor; the game's browser DOM runtime binds live game data/actions separately. This is a portable PixUI-authoring bridge, **not an active Godot PixUI HUD inside the browser**.
+- Terrain and vegetation receive a modest diffuse midtone lift; day/night, fog, shadow direction, and point lights still operate.
+- **Rest (H)** near a campfire: consume one wood to recover 42 health, 18 hunger, and all stamina/mana, advancing to dawn. Crop growth/resource regrowth follow the normal world-day counter. Rest count persists in v1 saves.
+- **Scout (G)**: spend 18 mana to identify nearby resources and wolf threats for eight seconds; the scan has an eight-second cooldown and renders projected in-world markers.
+- Wolf hits flash the viewport briefly; the action bar and context panel report relevant nearby threats.
+- Verified via `python test_pixui_survival.py` plus the existing browser gameplay/renderer tests. Existing v1 save JSON and guest co-op continue working. No authoritative survival server or Asciicker C++ port is claimed.

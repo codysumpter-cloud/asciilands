@@ -34,7 +34,7 @@ export class WorldRoom{
   webSocketClose(ws){const a=ws.deserializeAttachment?.();if(a?.id)this.broadcast({type:'leave',id:a.id},ws)}
   webSocketError(ws){const a=ws.deserializeAttachment?.();if(a?.id)this.broadcast({type:'leave',id:a.id},ws)}
 }
-export default {async fetch(req,env){const url=new URL(req.url);if(url.pathname==='/health')return new Response(JSON.stringify({ok:true,mode:'guest-coop',engine:'glyphbound-original-js',build:'0.3',authoritative:false}),{headers:{'Content-Type':'application/json',...CORS_HEADERS}});
+export default {async fetch(req,env){const url=new URL(req.url);if(url.pathname==='/health')return new Response(JSON.stringify({ok:true,mode:'guest-coop',engine:'glyphbound-original-js',build:'0.7',authoritative:false}),{headers:{'Content-Type':'application/json',...CORS_HEADERS}});
   if(url.pathname==='/'||url.pathname==='/index.html')return new Response(HTML,{headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'public,max-age=60',...CORS_HEADERS}});
   const match=/^\/api\/rooms\/([a-z0-9-]{1,24})$/.exec(url.pathname);
   if(match){if(!ROOM_RE.test(match[1]))return new Response('Invalid room',{status:400});if(req.headers.get('Upgrade')?.toLowerCase()!=='websocket')return new Response('WebSocket required',{status:426});const room=env.ROOMS.idFromName('glyphbound:'+match[1]);return env.ROOMS.get(room).fetch(req)}
