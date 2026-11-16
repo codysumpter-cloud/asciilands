@@ -1,6 +1,6 @@
 {
   "name": "Glyphbound",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "kind": "single-player ASCII survival game with optional guest co-op",
   "entrypoints": ["index.html", "glyphbound.html"],
   "author": "Prismtek",
