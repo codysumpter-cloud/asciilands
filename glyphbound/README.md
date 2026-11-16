@@ -75,3 +75,7 @@ The renderer now defaults to **Readable** terrain (gentler distant glyph contras
 ## v0.5 directional lighting and silhouette pass
 
 Dynamic sun rotates around the world and changes elevation throughout the day. Terrain gradients and tree-canopy normals drive diffuse shading; tree shadow footprints shift with the sun. Campfires and lanterns provide distance-attenuated warm local light, with cool crystal lights. A depth/material-layer edge pass emphasizes object silhouettes and terrain breaks. Background exposure never darkens the player sprite or warm light sources. In Settings you can turn outlines off, strengthen them, or return to classic flat shading. These are **stylized software lighting and projected shadows**, not physically correct GPU shadow mapping, global illumination, or path tracing.
+
+### v0.5.1 — Character scale correction
+
+Player sprites now render about 3.2 ASCII rows tall by default rather than occupying ~20% of the entire screen. Settings → Character scale offers Tiny, World scale (default), and Large accessibility sizes. The size setting persists in saved worlds and old saves use World scale. Peer sprites use smaller world-relative bounds.
