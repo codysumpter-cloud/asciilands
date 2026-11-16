@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+node_modules/
+server/worker-built.mjs
+playwright-report/
+test-results/
