@@ -1,0 +1,15 @@
+{
+  "schema": "prismtek.pixel-ui/v1",
+  "engine": "phaser4",
+  "theme": {
+    "id": "glyphbound_forest",
+    "name": "Glyphbound Forest",
+    "background": "#101c16",
+    "surface": "#24352a",
+    "edge": "#72916a",
+    "ink": "#f5ebd2",
+    "accent": "#edc78b",
+    "muted": "#b0c0ac",
+    "scale": 2
+  }
+}

@@ -14,3 +14,31 @@
 #btn-boat,#touch-boat{color:#94c7db}#btn-spell,#touch-spell{color:#bfb0f8}
 
 #btn-coop{border:1px solid #4e736f;color:#d9f5e9;background:#18312e}#coop-count{font-size:.64em;opacity:.72;white-space:nowrap}#coop-chat{max-height:175px;overflow-y:auto;margin:12px 0}#coop-chat p{margin:5px 0;overflow-wrap:anywhere}#coop-name,#coop-room,#coop-message{width:100%;padding:10px;color:#edf7ef;background:#111b1a;border:1px solid #45615b;border-radius:6px;min-width:0}.menu-actions:has(#coop-message){display:flex;flex-wrap:nowrap;gap:8px}.menu-actions #coop-message{flex:1}
+
+/* Glyphbound v0.7 — PixUI contract-bound web HUD. Shared tokens also import into Prismtek Engine. */
+:root{--pixui-background:#101c16;--pixui-surface:#24352a;--pixui-edge:#72916a;--pixui-ink:#f5ebd2;--pixui-accent:#edc78b;--pixui-muted:#b0c0ac}
+.pixui-toolbar{background:linear-gradient(145deg,#15251c,#112018);border-top:1px solid #557159;padding:8px 12px 9px;position:relative;z-index:1}
+.pixui-barhead{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:6px;font:10px ui-monospace,monospace;letter-spacing:.13em;color:var(--pixui-muted)}
+.pixui-barhead b{color:var(--pixui-accent);letter-spacing:.17em}
+.pixui-hotbar{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:5px}
+.pixui-slot{display:flex;align-items:center;justify-content:center;flex-direction:column;min-width:0;gap:1px;min-height:55px;padding:5px 2px;position:relative;color:var(--pixui-ink);border:1px solid #59715a;border-bottom:3px solid #42593e;border-radius:6px;background:linear-gradient(180deg,#304337,#1b2b24);box-shadow:inset 0 1px #ffffff0d,0 2px 0 #0b1410;transition:transform .15s,border-color .15s,box-shadow .15s}
+.pixui-slot:hover,.pixui-slot:focus-visible{transform:translateY(-2px);border-color:var(--pixui-accent);box-shadow:0 0 16px #e9bb7b33}
+.pixui-slot:active{transform:translateY(1px)}.pixui-slot.is-primary{border-color:#efce92;background:linear-gradient(#5c5035,#342f25)}
+.pixui-slot-icon{font-size:17px;line-height:1.1;color:var(--pixui-accent)}.pixui-slot-label{font:700 10px/1.2 ui-sans-serif,system-ui;overflow:hidden;text-overflow:ellipsis;max-width:100%}.pixui-slot-key{position:absolute;right:3px;top:2px;color:#c3cda8;font:8px ui-monospace,monospace;opacity:.8}
+.pixui-bindings{display:flex;gap:9px;flex-wrap:wrap;margin-top:6px;font:9px ui-monospace,monospace;color:var(--pixui-muted)}.pixui-bind strong{color:var(--pixui-accent)}
+.pixui-playstatus{position:absolute;left:14px;top:50px;z-index:4;background:#12231cd9;min-width:152px;max-width:220px;border:1px solid #56744d;border-radius:7px;padding:7px 8px;color:var(--pixui-ink);box-shadow:0 2px 12px #0019;pointer-events:none}
+.pixui-stat-line{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;font:8px ui-monospace,monospace;letter-spacing:.08em;color:#bbcbb0}
+.pixui-meters{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:5px 0 7px;height:5px;background:transparent}
+.pixui-meters>i{display:block;width:100%;height:5px;border-radius:5px;transition:width .2s}
+#pixui-hp-fill{background:#a9d99e}#pixui-sta-fill{background:#edc78b}#pixui-mana-fill{background:#ad9fe1}
+.pixui-target{font:700 10px/1.35 ui-monospace,monospace;overflow-wrap:anywhere;max-width:200px;color:#e9d0a6}
+.viewport.danger{animation:pixui-damage .34s ease-out 1}@keyframes pixui-damage{0%{box-shadow:inset 0 0 0 2px #ee6a66aa}60%{box-shadow:inset 0 0 40px 8px #c43e3e44}100%{box-shadow:inset 0 0 0 transparent}}
+@media(max-width:650px){.app{gap:6px}.top-strip{overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}.top-strip .stat-chip{flex:none}.viewport{height:clamp(390px,57dvh,620px)}.pixui-toolbar{padding:7px 6px}.pixui-barhead{font-size:8px}.pixui-slot{min-height:51px;border-radius:5px;gap:2px}.pixui-slot-label{font-size:9px}.pixui-slot-icon{font-size:15px}.pixui-slot-key{display:none}.pixui-playstatus{min-width:121px;max-width:155px;top:49px;left:8px;padding:6px}.pixui-target{font-size:9px}.action-row{display:flex;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin;padding:6px}.action-row button{flex:0 0 auto;min-width:70px;padding:8px 5px}.touchbar{padding:8px}.pixui-bindings{font-size:8px}}
+@media(prefers-reduced-motion:reduce){.pixui-slot,.pixui-meters>i{transition:none}.viewport.danger{animation:none}}
+
+/* FOCUS MODE: more actual game, fewer surrounding panels; always has a visible exit control. */
+.screen-top .pixui-focus-btn{background:#2c4637;color:#f7deb0;border:1px solid #668467;border-radius:5px;padding:4px 7px;font:10px ui-monospace,monospace;white-space:nowrap}
+.app.is-immersive .topbar,.app.is-immersive .top-strip,.app.is-immersive .side,.app.is-immersive .footer{display:none}
+.app.is-immersive{max-width:none;width:100%;padding:6px;gap:3px}.app.is-immersive .layout{display:block}.app.is-immersive .viewport{height:clamp(480px,73dvh,1200px)}
+.app.is-immersive .screen-top{border-color:var(--pixui-edge)}
+@media(max-width:650px){.screen-top .pixui-focus-btn{font-size:9px;padding:4px}.app.is-immersive .viewport{height:clamp(440px,72dvh,900px)}}
