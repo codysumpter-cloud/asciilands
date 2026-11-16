@@ -1,11 +1,11 @@
 (()=>{'use strict';
-// GLYPHBOUND 0.2 — expanded standalone survival game. Independently implemented; does NOT contain Asciicker C++ source.
+// GLYPHBOUND 0.5 — readable 3D ASCII wilderness with dynamic lighting. Independently implemented; does NOT contain Asciicker C++ source.
 const $=id=>document.getElementById(id),canvas=$('scene'),ctx=canvas.getContext('2d',{alpha:false}),view=$('viewport');
 const MIN=(x,a,b)=>Math.max(a,Math.min(b,x)), TAU=Math.PI*2, W=264,H=264, SEA=.06, SAVE_KEY='glyphbound_world_v1';
 const RES={wood:0,stone:0,berry:0,crystal:0,fiber:0,seed:0,meat:0,fish:0,meal:0,hide:0,coin:5};
-const state={visualMode:'readable',avatarMode:'sprite',seed:91627,x:128,z:132,yaw:0.18,zoom:1,day:1,time:8/24,yearDay:0,health:100,hunger:100,inv:{...RES},craft:{axe:false,workbench:false},placed:[],removed:{},hits:{},quest:{wood:false,stone:false,axe:false,camp:false},fireplace:null,weatherOverride:'auto',quality:6,buildKind:null,buildRotation:0,playing:true,seconds:0,killCount:0,rpg:null};
+const state={visualMode:'readable',avatarMode:'sprite',outlineMode:'soft',lightingMode:'dynamic',seed:91627,x:128,z:132,yaw:0.18,zoom:1,day:1,time:8/24,yearDay:0,health:100,hunger:100,inv:{...RES},craft:{axe:false,workbench:false},placed:[],removed:{},hits:{},quest:{wood:false,stone:false,axe:false,camp:false},fireplace:null,weatherOverride:'auto',quality:6,buildKind:null,buildRotation:0,playing:true,seconds:0,killCount:0,rpg:null};
 const T={MEADOW:0,FOREST:1,SAND:2,ROCK:3,SNOW:4,WATER:5,MARSH:6,PATH:7};
-let heights,biomes,objects=[],buckets=new Map(),creatures=[],particles=[],w=960,h=580,scale=1,cw=5,ch=7,cols=0,rows=0,zbuf,cellMat,cellGlyph,cellShade,cellFog,cellExtras,cellGlow;
+let heights,biomes,objects=[],buckets=new Map(),creatures=[],particles=[],w=960,h=580,scale=1,cw=5,ch=7,cols=0,rows=0,zbuf,cellMat,cellGlyph,cellShade,cellFog,cellExtras,cellGlow,cellLayer,cellEdge,cellWX,cellWY,cellWZ;
 let last=0,lastRender=0,frameClock=0,fps=0,fpsN=0,uiClock=0,mapClock=0,saveClock=0,toastTime=0,viewDrag=null,drawer=null,projCam=null,nearest=null,lastNotice='The morning sun rises over the vale.',mapDirty=true;
 const heroMotion={direction:1,walking:false},travelerSheet=new Image();
 travelerSheet.src='assets/traveler.png';
@@ -13,7 +13,12 @@ const pressed=new Set(),touchDir=new Set(),net=window.GLYPH_NET||{status:'offlin
 const G=[' ','.',',',':',';','!','i','/','\\','|','=','+','*','#','%','@','~','^','v','Y','o','x','O','&'];
 const M={sky:0,grass:1,forest:2,sand:3,rock:4,snow:5,water:6,marsh:7,wood:8,leaf:9,pine:10,birch:11,ore:12,berry:13,flower:14,animal:15,player:16,fire:17,shadow:18,build:19,dirt:20,white:21};
 const BASE=[[89,122,117],[103,164,97],[65,123,91],[210,187,128],[132,143,141],[226,233,209],[84,165,194],[89,126,99],[131,101,72],[108,183,89],[68,139,104],[212,199,154],[186,165,111],[228,99,133],[213,172,96],[204,164,125],[241,206,163],[245,152,83],[51,74,56],[201,173,112],[129,118,83],[224,226,195]];
-let colorCache=[],lightQuant=-1,fogQuant=-1,nightFactor=1,skyC=[40,76,85];
+let colorCache=[],warmCache=[],coolCache=[],lightQuant=-1,fogQuant=-1,nightFactor=1,skyC=[40,76,85];
+// The render pipeline keeps world coordinates and depth per glyph. Light and edges are
+// derived from geometry in the CPU cell buffer, not a CSS filter over the screenshot.
+let solar={x:.5,y:.6,z:.6,elevation:.5,direct:.5},localLights=[];
+const SHADOW_SIZE=120,shadowCells=new Float32Array(SHADOW_SIZE*SHADOW_SIZE);
+let shadowX=0,shadowZ=0,visibleEdges=0;
 const str=v=>String(v).padStart(2,'0');
 const fmtTime=()=>{const hr=Math.floor(state.time*24)%24, min=Math.floor((state.time*24%1)*60);return `${str(hr)}:${str(min)}`};
 const hash=(x,z,s=0)=>{let n=Math.imul(x|0,374761393)+Math.imul(z|0,668265263)+Math.imul((state.seed+s)|0,2246822519);n=(n^(n>>>13));n=Math.imul(n,1274126177);return ((n^(n>>>16))>>>0)/4294967295};
@@ -77,17 +82,112 @@ function skyLight(){const sun=Math.sin(state.time*TAU-Math.PI*.5);return MIN(.2+
 function weather(){if(state.weatherOverride!=='auto')return state.weatherOverride;const k=Math.sin(state.seconds/75+.65)+.6*Math.sin(state.seconds/37-1.7);return k>1.1?'rain':k>.67?'cloudy':'clear'}
 function lerp(a,b,t){return a+(b-a)*t}
 function mixRGB(a,b,t){return [lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)]}
-function cacheColors(){const sun=skyLight(),quant=Math.floor(sun*24),wx=weather(),fogColor=wx==='rain'?[60,83,83]:wx==='cloudy'?[80,99,102]:[104,136,129];if(lightQuant===quant&&fogQuant===wx)return;lightQuant=quant;fogQuant=wx;nightFactor=sun;
- skyC=mixRGB([11,24,32],wx==='rain'?[88,110,116]:[105,160,184],sun);
- colorCache=BASE.map((a,mat)=>{const out=[];for(let s=0;s<13;s++){out[s]=[];for(let f=0;f<5;f++){
-   const shade=(.31+sun*1.08)*(.62+s/13*.78);
-   const lit=a.map(v=>Math.min(255,v*shade+(mat===M.fire?90:0)));
-   const fog=f*.07;const blend=mixRGB(lit,skyC,fog);
-   out[s][f]=`rgb(${blend.map(v=>Math.round(MIN(v,0,255))).join(',')})`;
- }}return out})}
+function updateSun(){
+ const elevation=Math.sin((state.time-.25)*TAU),azimuth=state.time*TAU+.32;
+ const wx=weather(),strength=wx==='rain'?.36:wx==='cloudy'?.58:1;
+ const moon=elevation<0,reach=Math.sqrt(Math.max(.01,1-Math.min(1,elevation*elevation)))*(moon?-1:1);
+ const strengthAtTime=moon?(Math.max(0,-elevation)*.21*(wx==='rain'?.44:.8)):Math.max(0,elevation)*strength;
+ solar={x:Math.cos(azimuth)*reach,y:Math.max(.09,moon?-elevation*.7:elevation),z:Math.sin(azimuth)*reach,
+        elevation,direct:strengthAtTime};
+}
+function surfaceShade(nx,ny,nz,detail=0){
+ if(state.lightingMode==='flat')return MIN(Math.round(8+detail),1,12);
+ const len=Math.hypot(nx,ny,nz)||1,dot=(nx*solar.x+ny*solar.y+nz*solar.z)/len;
+ const bounce=.25+.75*Math.max(0,dot)*solar.direct;
+ return MIN(Math.round(2.9+bounce*8.3+detail),1,12);
+}
+function buildLocalLights(){
+ localLights=[];if(state.lightingMode==='flat')return;
+ const push=(s)=>{
+  if(Math.hypot(s.x-state.x,s.z-state.z)>56)return;
+  if(s.type==='campfire'||s.type==='lantern')localLights.push({x:s.x,y:heightAt(s.x,s.z)+(s.type==='lantern'?2.25:.55),z:s.z,
+    r:s.type==='campfire'?11:13,power:s.type==='campfire'?1.0:.82,color:1});
+ };
+ for(const s of state.placed)push(s);
+ for(const s of net.builds.values())if(!state.placed.some(x=>x.id===s.id))push(s);
+ for(const o of objectsNear(state.x,state.z,39))if(o.type==='ore'&&localLights.length<20){
+  localLights.push({x:o.x,y:o.y+.6,z:o.z,r:5.3,power:.35,color:-1});
+ }
+ // Cap worst-case co-op settlements: light selection prefers nearby objects.
+ localLights.sort((a,b)=>Math.hypot(a.x-state.x,a.z-state.z)-Math.hypot(b.x-state.x,b.z-state.z));
+ localLights.length=Math.min(22,localLights.length);
+}
+function lightAt(x,y,z){
+ if(state.lightingMode==='flat')return 0;
+ let warm=0,cool=0;const night=1-.55*skyLight();
+ for(const l of localLights){const dx=x-l.x,dy=(y-l.y)*.8,dz=z-l.z,d2=dx*dx+dy*dy+dz*dz,r2=l.r*l.r;
+  if(d2>=r2)continue;const t=1-d2/r2;
+  const flicker=l.color>0?(.91+.09*Math.sin(state.seconds*7.7+l.x*3.1)):1;
+  const amount=t*t*l.power*flicker*(.7+night*.55);
+  if(l.color>0)warm+=amount;else cool+=amount;
+ }
+ return MIN(warm-cool,-1,1);
+}
+function paintTreeShadows(){
+ shadowCells.fill(0);shadowX=Math.floor(state.x)-SHADOW_SIZE/2;shadowZ=Math.floor(state.z)-SHADOW_SIZE/2;
+ if(state.lightingMode==='flat'||solar.elevation<.03||solar.direct<.03)return;
+ const nearby=objectsNear(state.x,state.z,57);
+ for(const o of nearby){if(!['birch','pine','oak'].includes(o.type))continue;
+  const tall=o.scale*(o.type==='pine'?6.5:5.5),reach=MIN(tall*.64/Math.max(.23,solar.elevation),1.5,20);
+  const steps=Math.max(3,Math.ceil(reach/1.7)),radius=MIN(o.scale*1.5,.65,2.8);
+  for(let i=1;i<=steps;i++){
+    const f=i/steps,cx=o.x-solar.x*reach*f-shadowX,cz=o.z-solar.z*reach*f-shadowZ;
+    const r=radius*(1-.17*f),loX=Math.max(0,Math.floor(cx-r)),hiX=Math.min(SHADOW_SIZE-1,Math.ceil(cx+r));
+    const loZ=Math.max(0,Math.floor(cz-r)),hiZ=Math.min(SHADOW_SIZE-1,Math.ceil(cz+r));
+    for(let z=loZ;z<=hiZ;z++)for(let x=loX;x<=hiX;x++){
+      const q=((x+.5-cx)**2+(z+.5-cz)**2)/(r*r);
+      if(q>=1)continue;
+      const idx=z*SHADOW_SIZE+x,v=(1-q)*(.63-.19*f)*Math.min(1,solar.direct*1.7);
+      shadowCells[idx]=Math.max(shadowCells[idx],v);
+    }
+  }
+ }
+}
+function shadowAt(x,z){
+ const gx=Math.floor(x-shadowX),gz=Math.floor(z-shadowZ);
+ return gx>=0&&gz>=0&&gx<SHADOW_SIZE&&gz<SHADOW_SIZE?shadowCells[gz*SHADOW_SIZE+gx]:0;
+}
+function findEdges(){
+ cellEdge.fill(0);visibleEdges=0;
+ if(state.outlineMode==='off')return;
+ for(let y=1;y<rows-1;y++)for(let x=1;x<cols-1;x++){
+  const i=y*cols+x,layer=cellLayer[i];if(!layer)continue;
+  const neighbors=[i-1,i+1,i-cols,i+cols],d=zbuf[i];let edge=false;
+  let silhouetteCount=0,depthCliff=false;
+  for(const j of neighbors){
+   if(layer===2){if(cellLayer[j]!==2)silhouetteCount++;
+    else if(Math.abs(zbuf[j]-d)>Math.max(3.2,d*.24))depthCliff=true;
+   }else if(cellLayer[j]===1&&zbuf[j]<d-Math.max(2.6,d*.16)){edge=true;break}
+  }
+  if(layer===2)edge=silhouetteCount>=2||(silhouetteCount>=1&&depthCliff);
+  if(edge){cellEdge[i]=layer===2?2:1;visibleEdges++}
+ }
+}
+function cacheColors(){const sun=skyLight(),quant=Math.floor(sun*36),wx=weather();
+ if(lightQuant===quant&&fogQuant===wx)return;lightQuant=quant;fogQuant=wx;nightFactor=sun;
+ const morning=Math.max(0,1-Math.abs(state.time-.27)*13),evening=Math.max(0,1-Math.abs(state.time-.74)*13);
+ skyC=mixRGB([18,34,53],wx==='rain'?[91,113,125]:[111,159,191],sun);
+ const glow=Math.max(morning,evening)*Math.max(.14,sun);
+ skyC=mixRGB(skyC,[207,132,111],glow*.34);
+ const fmt=(v)=>`rgb(${v.map(n=>Math.round(MIN(n,0,255))).join(',')})`;
+ const renderPalette=(a,mat,s,f)=>{
+  const exposure=(.31+sun*.96)*(.56+s/12*.88),fire=mat===M.fire?85:0;
+  let rgb=a.map(v=>Math.min(255,v*exposure+fire));
+  rgb=mixRGB(rgb,skyC,f*.07);return rgb;
+ };
+ colorCache=BASE.map((a,m)=>Array.from({length:13},(_,shade)=>Array.from({length:5},(_,fog)=>fmt(renderPalette(a,m,shade,fog)))));
+ warmCache=BASE.map((a,m)=>Array.from({length:13},(_,shade)=>Array.from({length:5},(_,fog)=>{
+  const c=renderPalette(a,m,shade,fog);
+  return Array.from({length:4},(_,level)=>fmt(c.map((v,i)=>MIN(v+(level*10)+(255*(i===0? .11:i===1?.055:0))*level,0,255))));
+ })));
+ coolCache=BASE.map((a,m)=>Array.from({length:13},(_,shade)=>Array.from({length:5},(_,fog)=>{
+  const c=renderPalette(a,m,shade,fog);
+  return Array.from({length:4},(_,level)=>fmt(c.map((v,i)=>MIN(v+(level*8)+(255*(i===2?.10:i===1?.045:0))*level,0,255))));
+ })));
+}
 function biomeColor(b){return [['#4c9160','#3a714e'],['#3b7652','#316546'],['#c9b077','#a98f66'],['#949b91','#7c847e'],['#d4dbcd','#a9b8ba'],['#468aa2','#2f6c8e'],['#527e60','#405f4f'],['#806f53','#665d49']][b]||['#4a805a','#3d7551']}
 function resize(){const b=view.getBoundingClientRect(),width=Math.max(250,b.width),height=Math.max(300,b.height);w=Math.round(width);h=Math.round(height);scale=Math.min(2,window.devicePixelRatio||1);canvas.width=Math.round(w*scale);canvas.height=Math.round(h*scale);ctx.setTransform(scale,0,0,scale,0,0);ctx.imageSmoothingEnabled=false;setQuality(state.quality,false);mapDirty=true}
-function setQuality(size,resizeBuffer=true){state.quality=Number(size);cw=state.quality*.64;ch=state.quality*1.16;cols=Math.max(25,Math.min(162,Math.floor(w/cw)));rows=Math.max(20,Math.min(105,Math.floor(h/ch)));cw=w/cols;ch=h/rows;const n=cols*rows;zbuf=new Float32Array(n);cellMat=new Uint8Array(n);cellGlyph=new Uint8Array(n);cellShade=new Uint8Array(n);cellFog=new Uint8Array(n);cellExtras=new Uint8Array(n);cellGlow=new Uint8Array(n);$('render-stats').textContent=`${size} PX GLYPHS • ${fps} FPS`}
+function setQuality(size,resizeBuffer=true){state.quality=Number(size);cw=state.quality*.64;ch=state.quality*1.16;cols=Math.max(25,Math.min(162,Math.floor(w/cw)));rows=Math.max(20,Math.min(105,Math.floor(h/ch)));cw=w/cols;ch=h/rows;const n=cols*rows;zbuf=new Float32Array(n);cellMat=new Uint8Array(n);cellGlyph=new Uint8Array(n);cellShade=new Uint8Array(n);cellFog=new Uint8Array(n);cellExtras=new Uint8Array(n);cellGlow=new Uint8Array(n);cellLayer=new Uint8Array(n);cellEdge=new Uint8Array(n);cellWX=new Float32Array(n);cellWY=new Float32Array(n);cellWZ=new Float32Array(n);$('render-stats').textContent=`${size} PX GLYPHS • ${fps} FPS`}
 const vnorm=(x,y,z)=>{const d=Math.hypot(x,y,z)||1;return [x/d,y/d,z/d]};
 function camera(){const distance=17*state.zoom,xx=state.x-Math.sin(state.yaw)*distance,zz=state.z+Math.cos(state.yaw)*distance,py=heightAt(state.x,state.z),yy=py+9.5*state.zoom;
  const targetX=state.x+Math.sin(state.yaw)*5.6,targetZ=state.z-Math.cos(state.yaw)*5.6,targetY=py+1.6;
@@ -95,14 +195,14 @@ function camera(){const distance=17*state.zoom,xx=state.x-Math.sin(state.yaw)*di
  return {xx,yy,zz,fx,fy,fz,rx,ry,rz,ux,uy,uz,fov:.63,aspect:w/h,focal:h/(2*.63)};
 }
 function project(x,y,z){const c=projCam,dx=x-c.xx,dy=y-c.yy,dz=z-c.zz,d=dx*c.fx+dy*c.fy+dz*c.fz;if(d<.5||d>112)return null;const sx=(dx*c.rx+dy*c.ry+dz*c.rz)*c.focal/d+w*.5;const sy=h*.5-(dx*c.ux+dy*c.uy+dz*c.uz)*c.focal/d;if(sx<0||sx>=w||sy<0||sy>=h)return null;return [(sx/cw)|0,(sy/ch)|0,d]}
-function placeGlyph(x,y,z,g,m,shade=9,glow=0){const p=project(x,y,z);if(!p)return;const i=p[1]*cols+p[0];if(p[2]<zbuf[i]+.02){zbuf[i]=p[2]-.02;cellMat[i]=m;cellGlyph[i]=g;cellShade[i]=shade;cellFog[i]=MIN((p[2]/23)|0,0,4);cellGlow[i]=glow}}
-function cellGround(x,y,z,t,g,b,shade,fog){const ix=((x/cw)|0),iy=((y/ch)|0);if(ix<0||iy<0||ix>=cols||iy>=rows)return;const i=iy*cols+ix;if(t>=zbuf[i])return;zbuf[i]=t;cellMat[i]=b;cellGlyph[i]=g;cellShade[i]=shade;cellFog[i]=fog;cellGlow[i]=0}
+function placeGlyph(x,y,z,g,m,shade=9,glow=0){const p=project(x,y,z);if(!p)return;const i=p[1]*cols+p[0];if(p[2]<zbuf[i]+.02){zbuf[i]=p[2]-.02;cellMat[i]=m;cellGlyph[i]=g;cellShade[i]=shade;cellFog[i]=MIN((p[2]/23)|0,0,4);cellGlow[i]=glow;cellLayer[i]=2;cellWX[i]=x;cellWY[i]=y;cellWZ[i]=z}}
+function cellGround(x,y,z,t,g,b,shade,fog){const ix=((x/cw)|0),iy=((y/ch)|0);if(ix<0||iy<0||ix>=cols||iy>=rows)return;const i=iy*cols+ix;if(t>=zbuf[i])return;zbuf[i]=t;cellMat[i]=b;cellGlyph[i]=g;cellShade[i]=shade;cellFog[i]=fog;cellGlow[i]=0;cellLayer[i]=1;cellWX[i]=x;cellWY[i]=y;cellWZ[i]=z}
 function traceTerrain(){const c=projCam,aspect=c.aspect,tilt=c.fov;const colorSun=Math.sin(state.time*TAU);let hitCount=0;
  for(let gy=0;gy<rows;gy++){
    const sv=(1-(gy+.5)/rows*2)*tilt,baseX=c.fx+c.ux*sv,baseY=c.fy+c.uy*sv,baseZ=c.fz+c.uz*sv;
    for(let gx=0;gx<cols;gx++){
     const i=gy*cols+gx,sh=((gx+gy*17)%17),sr=(sh===3)?10:sh===1?7:sh===11?8:6;
-    cellMat[i]=M.sky;cellGlyph[i]=(hash(gx,gy,92)>.989&&gy<rows*.5)?1:0;cellShade[i]=sr;cellFog[i]=0;zbuf[i]=1e5;cellGlow[i]=0;
+    cellMat[i]=M.sky;cellGlyph[i]=(hash(gx,gy,92)>.989&&gy<rows*.5)?1:0;cellShade[i]=sr;cellFog[i]=0;zbuf[i]=1e5;cellGlow[i]=0;cellLayer[i]=0;
     const su=((gx+.5)/cols*2-1)*aspect*tilt,dx=baseX+c.rx*su,dy=baseY+c.ry*su,dz=baseZ+c.rz*su;
     if(dy>-.015)continue;
     let prev=1.2,y=c.yy+prev*dy,prevAbove=true,t=1.2,xx=0,zz=0,hit=false;
@@ -126,10 +226,16 @@ function traceTerrain(){const c=projCam,aspect=c.aspect,tilt=c.fov;const colorSu
     else g=rand>.86?18:rand>.63?6:rand>.41?3:rand>.21?2:1;
     if(b!==T.WATER &&rand>.979&&(b===T.MEADOW||b===T.FOREST)) {mat=M.flower;g=12}
     let shade=7;
-    if(!tWater){const gradX=heightAt(xx+.65,zz)-heightAt(xx-.65,zz),gradZ=heightAt(xx,zz+.65)-heightAt(xx,zz-.65);shade=MIN(Math.floor(8+(-gradX*.25+gradZ*.16)*5+(rand-.5)*4),1,12)}
+    if(!tWater){
+      const gradX=(heightAt(xx+.58,zz)-heightAt(xx-.58,zz))/1.16;
+      const gradZ=(heightAt(xx,zz+.58)-heightAt(xx,zz-.58))/1.16;
+      shade=surfaceShade(-gradX,1,-gradZ,(rand-.5)*2.0);
+      shade=MIN(Math.round(shade-shadowAt(xx,zz)*6.5),1,12);
+    }
     else shade=MIN(7+Math.sin(state.seconds*1.9+xx*.4+zz*.3)*2+(rand-.5)*3,2,11)|0;
     const fog=MIN((t/21)|0,0,4);
-    zbuf[i]=t;cellMat[i]=mat;cellGlyph[i]=g;cellShade[i]=shade;cellFog[i]=fog;hitCount++;
+    zbuf[i]=t;cellMat[i]=mat;cellGlyph[i]=g;cellShade[i]=shade;cellFog[i]=fog;
+    cellWX[i]=xx;cellWY[i]=Math.max(SEA,terrain);cellWZ[i]=zz;cellLayer[i]=1;hitCount++;
    }
  }
  return hitCount;
@@ -142,10 +248,13 @@ function fillCanopy(x,y,z,rX,rY,rZ,mat,seed,style=0){
    const u=(gx+.5-cx)/radiusX,v=(gy+.5-cy)/radiusY,q=u*u+v*v;if(q>1)continue;
    const bulge=Math.sqrt(1-q),depth=d-rZ*bulge-.16,idx=gy*cols+gx;
    if(depth>zbuf[idx]+.1)continue;
-   const rand=hash(gx+(seed*500|0),gy+((seed*300)|0),31),illum=MIN(Math.floor(8+2.4*bulge-2.1*u-1.6*v+(rand-.5)*2.6),2,12);
+   const rand=hash(gx+(seed*500|0),gy+((seed*300)|0),31);
+   const nx=u*projCam.rx-bulge*projCam.fx,ny=-v*projCam.uy-bulge*projCam.fy,nz=u*projCam.rz-bulge*projCam.fz;
+   const illum=surfaceShade(nx,ny,nz,(rand-.5)*1.7);
    zbuf[idx]=depth;cellMat[idx]=(rand>.972&&mat===M.leaf)?M.flower:mat;
    cellGlyph[idx]=style===1?(rand>.83?19:rand>.4?12:13):rand>.77?15:rand>.45?14:rand>.18?13:12;
    cellShade[idx]=illum;cellFog[idx]=MIN((depth/27)|0,0,4);
+   cellLayer[idx]=2;cellWX[idx]=x+u*rX;cellWY[idx]=y-v*rY;cellWZ[idx]=z-bulge*rZ*.35;
  }
 }
 function drawTree(o){
@@ -216,7 +325,7 @@ function drawWorldObjects(){const objs=objectsNear(projCam.xx,projCam.zz,77);obj
  if(state.buildKind)drawStructure(buildLocation(),true);
  for(const a of creatures){if(Math.hypot(a.x-state.x,a.z-state.z)<58)drawAnimal(a)}
  rpgDrawWorld();
- for(const peer of net.peers.values()){if(Number.isFinite(peer.x)&&Number.isFinite(peer.z)&&Math.hypot(peer.x-state.x,peer.z-state.z)<65){const y=Math.max(SEA,heightAt(peer.x,peer.z));fillCanopy(peer.x,y+.9,peer.z,.36,.55,.32,M.water,.83);fillCanopy(peer.x,y+1.5,peer.z,.25,.3,.27,M.ore,.9);placeGlyph(peer.x,y+1.88,peer.z,23,M.white,12,1)}}
+ if(state.avatarMode!=='sprite')for(const peer of net.peers.values()){if(Number.isFinite(peer.x)&&Number.isFinite(peer.z)&&Math.hypot(peer.x-state.x,peer.z-state.z)<65){const y=Math.max(SEA,heightAt(peer.x,peer.z));fillCanopy(peer.x,y+.9,peer.z,.36,.55,.32,M.water,.83);fillCanopy(peer.x,y+1.5,peer.z,.25,.3,.27,M.ore,.9);placeGlyph(peer.x,y+1.88,peer.z,23,M.white,12,1)}}
  if(state.avatarMode!=='sprite')drawPlayer();
 }
 function drawSpriteAt(wx,wz,jump,direction,label,remote=false){
@@ -251,14 +360,26 @@ function drawSpriteAt(wx,wz,jump,direction,label,remote=false){
 function drawOverlay(){ctx.textAlign='center';ctx.textBaseline='middle';ctx.font=`${Math.max(5,state.quality)}px ui-monospace,Menlo,Consolas,monospace`;
  let shown=0;for(let i=0;i<rows*cols;i++){
  const g=cellGlyph[i];if(g===0)continue;
- const m=cellMat[i];let col=colorCache[m][cellShade[i]][cellFog[i]];
- if(cellGlow[i])col=nightFactor<.5?'#ffce79':'#ffc878';ctx.fillStyle=col;
+ const m=cellMat[i],shade=cellShade[i],fog=cellFog[i];
+ let col=colorCache[m][shade][fog];
+ if(state.lightingMode!=='flat'&&cellLayer[i]){
+  const lum=lightAt(cellWX[i],cellWY[i],cellWZ[i]),energy=cellGlow[i]?Math.max(.72,lum):lum;
+  if(Math.abs(energy)>.07){const level=MIN(Math.max(1,Math.round(Math.abs(energy)*3)),1,3),litShade=MIN(shade+level,0,12);
+   col=energy>0?warmCache[m][litShade][fog][level]:coolCache[m][litShade][fog][level];
+  }
+ }else if(cellGlow[i])col='#ffcd80';
+ ctx.fillStyle=col;
  const xx=((i%cols)+.5)*cw,yy=(((i/cols)|0)+.49)*ch;
  if(state.visualMode==='readable'){
    const depth=zbuf[i],ground=(m===M.grass||m===M.forest||m===M.sand||m===M.rock||m===M.snow||m===M.water||m===M.marsh||m===M.dirt);
    const fade=MIN(1-Math.max(0,depth-13)/90,.38,1);
    ctx.globalAlpha=ground?(.53*fade):(.76+.24*fade);
    if(ground && depth>16 && ((i*17+Math.floor(i/cols)*31)%7===0))ctx.globalAlpha*=.65;
+ }
+ if(cellEdge[i]){
+  ctx.strokeStyle=cellEdge[i]===2?'rgba(9,20,25,.66)':'rgba(19,32,33,.51)';
+  ctx.lineWidth=state.outlineMode==='strong'?1.35:cellEdge[i]===2?.56:.38;
+  ctx.strokeText(G[g],xx,yy);
  }
  ctx.fillText(G[g],xx,yy);shown++;ctx.globalAlpha=1;
  }
@@ -288,13 +409,14 @@ function drawOverlay(){ctx.textAlign='center';ctx.textBaseline='middle';ctx.font
  }}
  return shown;
 }
-function render(){if(!heights||!canvas.width)return;cacheColors();projCam=camera();
+function render(){if(!heights||!canvas.width)return;updateSun();cacheColors();projCam=camera();
+ buildLocalLights();paintTreeShadows();
  const sk=skyC.map(Math.round),top=`rgb(${sk.map(v=>Math.round(v*.78)).join(',')})`,bottom=`rgb(${sk.map(v=>Math.round(v*1.1)).join(',')})`;
  const gradient=ctx.createLinearGradient(0,0,0,h);gradient.addColorStop(0,top);gradient.addColorStop(.7,bottom);gradient.addColorStop(1,'#253a2f');ctx.fillStyle=gradient;ctx.fillRect(0,0,w,h);
- const count=traceTerrain();drawWorldObjects();const glyphCount=drawOverlay();
- // Atmospheric night tint and exposure, independent of scene geometry.
- if(nightFactor<.4){ctx.fillStyle=`rgba(4,11,27,${(.4-nightFactor)*.25})`;ctx.fillRect(0,0,w,h)}
- return {glyphCount,count};
+ // Fog and night grading are behind lit geometry so flames and the player's outline remain readable.
+ if(nightFactor<.4){ctx.fillStyle=`rgba(4,11,27,${(.4-nightFactor)*.17})`;ctx.fillRect(0,0,w,h)}
+ const count=traceTerrain();drawWorldObjects();findEdges();const glyphCount=drawOverlay();
+ return {glyphCount,count,edges:visibleEdges,lights:localLights.length};
 }
 function isTree(o){return o&&['pine','birch','oak'].includes(o.type)}
 function pickNearest(){let best=null,d=Infinity;for(const o of objectsNear(state.x,state.z,4.5)){
@@ -533,7 +655,7 @@ function openDialog(type){drawer=type;const name={craft:'CRAFTING & EQUIPMENT',b
  if(type==='map')html='<canvas id="fullmap" class="map-large" width="420" height="420" aria-label="Map of the full procedural world"></canvas><div class="field-note">◇ = your position. The world is procedurally generated from a fixed seed. Blue: water; green: forest; yellow: sand; white: snow. Structures you build remain in the same location after saving.</div>';
  if(type==='help')html=`<div class="help"><p><b>W A S D / arrows</b> — move relative to the camera.<br><b>Shift</b> — sprint.<br><b>Mouse drag / finger drag</b> — orbit the view.<br><b>Mouse wheel</b> — camera zoom.<br><b>Q / Z</b> — rotate view left / right.<br><b>E / Action</b> — harvest nearby resources, tend gardens, or trade.<br><b>R</b> — rotate a build piece. <b>F</b> — attack. <b>V</b> — fish. <b>T</b> — sail raft. <b>K</b> — cast magic. <b>Space</b> — jump.<br><b>C</b> — craft · <b>B</b> — build · <b>I</b> — pack and eat · <b>M</b> — world map.<br><b>Esc</b> — close menu or cancel building.</p><p><b>Your first camp:</b> gather wood and stone, craft the axe, place a campfire. Rest beside a lit campfire with E to restore health. Rain, animal movement, and day/night run on the shared world clock. Each local save remembers what you build and harvest.</p><p><b>Mobile:</b> use the direction pad and Action, or drag the world to orbit. Use the View buttons to adjust the camera.</p></div>`;
  if(type==='coop')html=`<div class="field-note">Optional guest co-op: up to 16 travelers can explore the same seeded terrain, see one another, chat, and place persistent shared structures. Inventories, combat and survival are local (not server-authoritative). Anyone with the room link can join.</div><div class="settings-grid"><label>Your display name<input id="coop-name" maxlength="22" autocomplete="off" placeholder="Wanderer"></label><label>Room code<input id="coop-room" maxlength="24" autocomplete="off" placeholder="forest"></label></div><div class="menu-actions"><button id="coop-join">Join / Create Room</button><button id="coop-leave">Leave</button><button id="coop-share">Copy Invite URL</button></div><p class="field-note" id="coop-status"></p><div class="field-note" id="coop-chat" aria-live="polite"></div><div class="menu-actions"><input id="coop-message" maxlength="140" aria-label="Chat message" placeholder="Say hello..."><button id="coop-send">Send</button></div>`;
- if(type==='settings')html=`<div class="settings-grid"><label>Audio <select id="audio-setting"><option value="off">Muted</option><option value="on">Effects on</option></select></label><label>World readability <select id="visual-setting"><option value="readable">Readable · quiet distant terrain</option><option value="dense">Dense · original full ASCII</option></select></label><label>Player appearance <select id="avatar-setting"><option value="sprite">Animated pixel-art sprite</option><option value="ascii">Classic ASCII glyph</option></select></label><label>World glyph size <select id="detail-setting"><option value="4.5">Ultra · 4.5 px</option><option value="6">Fine · 6 px</option><option value="8">Balanced · 8 px</option><option value="11">Classic · 11 px</option></select></label><label>Weather <select id="weather-setting"><option value="auto">Dynamic (recommended)</option><option value="clear">Clear</option><option value="rain">Rain</option><option value="cloudy">Cloudy</option></select></label><label>Camera distance <input id="zoom-setting" type="range" min=".75" max="1.4" step=".05" value="${state.zoom}"></label></div><div class="divider"></div><div class="menu-actions"><button id="save-now">Save now</button><button id="export-now">Export save JSON</button><button id="import-now">Import save JSON</button><button class="danger" id="new-world">Reset world</button></div><div class="field-note">Progress is stored on this browser and origin via localStorage. Export a save file to move your progress to a different browser or device. No login or server account is required.</div><input type="file" accept="application/json,.json" id="save-file" class="sr-only">`;
+ if(type==='settings')html=`<div class="settings-grid"><label>Audio <select id="audio-setting"><option value="off">Muted</option><option value="on">Effects on</option></select></label><label>World readability <select id="visual-setting"><option value="readable">Readable · quiet distant terrain</option><option value="dense">Dense · original full ASCII</option></select></label><label>Outlines <select id="outline-setting"><option value="soft">Soft depth outlines</option><option value="strong">Strong depth outlines</option><option value="off">Off</option></select></label><label>Lighting <select id="lighting-setting"><option value="dynamic">Dynamic sun / local lights</option><option value="flat">Classic flat shading</option></select></label><label>Player appearance <select id="avatar-setting"><option value="sprite">Animated pixel-art sprite</option><option value="ascii">Classic ASCII glyph</option></select></label><label>World glyph size <select id="detail-setting"><option value="4.5">Ultra · 4.5 px</option><option value="6">Fine · 6 px</option><option value="8">Balanced · 8 px</option><option value="11">Classic · 11 px</option></select></label><label>Weather <select id="weather-setting"><option value="auto">Dynamic (recommended)</option><option value="clear">Clear</option><option value="rain">Rain</option><option value="cloudy">Cloudy</option></select></label><label>Camera distance <input id="zoom-setting" type="range" min=".75" max="1.4" step=".05" value="${state.zoom}"></label></div><div class="divider"></div><div class="menu-actions"><button id="save-now">Save now</button><button id="export-now">Export save JSON</button><button id="import-now">Import save JSON</button><button class="danger" id="new-world">Reset world</button></div><div class="field-note">Progress is stored on this browser and origin via localStorage. Export a save file to move your progress to a different browser or device. No login or server account is required.</div><input type="file" accept="application/json,.json" id="save-file" class="sr-only">`;
  $('dialog-body').innerHTML=html;$('drawer').classList.add('open');
  for(const button of $('dialog-body').querySelectorAll('[data-recipe]'))button.addEventListener('click',()=>{if(button.dataset.action==='craft')rpgCraft(button.dataset.recipe);else chooseBuild(button.dataset.recipe)});
  for(const button of $('dialog-body').querySelectorAll('[data-trade]'))button.addEventListener('click',()=>rpgTrade(button.dataset.trade));
@@ -549,10 +671,12 @@ function openDialog(type){drawer=type;const name={craft:'CRAFTING & EQUIPMENT',b
  }
  if(type==='map')drawFullMap();
  if(type==='settings'){
-   $('detail-setting').value=String(state.quality);$('visual-setting').value=state.visualMode;$('avatar-setting').value=state.avatarMode;$('weather-setting').value=state.weatherOverride;$('audio-setting').value=state.rpg.muted?'off':'on';$('audio-setting').onchange=e=>{state.rpg.muted=e.target.value!=='on';playTone(420,.12);saveWorld(false)};
+   $('detail-setting').value=String(state.quality);$('visual-setting').value=state.visualMode;$('avatar-setting').value=state.avatarMode;$('outline-setting').value=state.outlineMode;$('lighting-setting').value=state.lightingMode;$('weather-setting').value=state.weatherOverride;$('audio-setting').value=state.rpg.muted?'off':'on';$('audio-setting').onchange=e=>{state.rpg.muted=e.target.value!=='on';playTone(420,.12);saveWorld(false)};
    $('detail-setting').onchange=e=>{setQuality(+e.target.value);saveWorld(false)};
    $('visual-setting').onchange=e=>{state.visualMode=e.target.value;saveWorld(false)};
    $('avatar-setting').onchange=e=>{state.avatarMode=e.target.value;saveWorld(false)};
+   $('outline-setting').onchange=e=>{state.outlineMode=e.target.value;saveWorld(false)};
+   $('lighting-setting').onchange=e=>{state.lightingMode=e.target.value;saveWorld(false)};
    $('weather-setting').onchange=e=>{state.weatherOverride=e.target.value;lightQuant=-1;saveWorld(false)};
    $('zoom-setting').oninput=e=>{state.zoom=+e.target.value};
    $('save-now').onclick=()=>{saveWorld(true);closeDialog()};
@@ -570,11 +694,11 @@ function drawFullMap(){const c=$('fullmap');if(!c)return;const m=c.getContext('2
  m.putImageData(img,0,0);m.fillStyle='#eed299';m.beginPath();m.arc(state.x/W*c.width,state.z/H*c.height,5,0,TAU);m.fill();m.strokeStyle='#34271a';m.lineWidth=1.4;m.stroke();
  for(const s of state.placed){m.fillStyle='#f5a35e';m.fillRect(s.x/W*c.width-2,s.z/H*c.height-2,4,4)}
 }
-function cleanSave(){return {version:1,seed:state.seed,x:state.x,z:state.z,yaw:state.yaw,zoom:state.zoom,day:state.day,time:state.time,yearDay:state.yearDay,health:state.health,hunger:state.hunger,inv:state.inv,craft:state.craft,quest:state.quest,placed:state.placed,removed:state.removed,fireplace:state.fireplace,killCount:state.killCount,seconds:state.seconds,weatherOverride:state.weatherOverride,quality:state.quality,visualMode:state.visualMode,avatarMode:state.avatarMode,rpg:state.rpg}}
+function cleanSave(){return {version:1,seed:state.seed,x:state.x,z:state.z,yaw:state.yaw,zoom:state.zoom,day:state.day,time:state.time,yearDay:state.yearDay,health:state.health,hunger:state.hunger,inv:state.inv,craft:state.craft,quest:state.quest,placed:state.placed,removed:state.removed,fireplace:state.fireplace,killCount:state.killCount,seconds:state.seconds,weatherOverride:state.weatherOverride,quality:state.quality,visualMode:state.visualMode,avatarMode:state.avatarMode,outlineMode:state.outlineMode,lightingMode:state.lightingMode,rpg:state.rpg}}
 function saveWorld(notify=true){try{localStorage.setItem(SAVE_KEY,JSON.stringify(cleanSave()));$('status-text').textContent='WORLD SAVED';if(notify)toast('WORLD SAVED IN THIS BROWSER')}catch(e){$('status-text').textContent='SAVE UNAVAILABLE';if(notify)toast('BROWSER STORAGE BLOCKED · EXPORT JSON IN SETTINGS')}}
 function loadWorld(){try{const saved=JSON.parse(localStorage.getItem(SAVE_KEY)||'null');if(!saved||saved.version!==1)return false;hydrate(saved);return true}catch(e){return false}}
-function hydrate(data){const allowed=['seed','x','z','yaw','zoom','day','time','yearDay','health','hunger','killCount','seconds','quality','visualMode','avatarMode','weatherOverride','fireplace'];for(const k of allowed)if(data[k]!==undefined&&data[k]!==null)state[k]=data[k];
- if(data.inv)state.inv={...RES,...data.inv};if(data.rpg&&typeof data.rpg==='object')state.rpg=mergeRPG(data.rpg);if(data.quest)state.quest={...state.quest,...data.quest};if(data.craft)state.craft={...state.craft,...data.craft};if(data.placed&&Array.isArray(data.placed))state.placed=data.placed.slice(0,1000);if(data.removed)state.removed=data.removed;state.x=MIN(Number(state.x)||128,4,W-4);state.z=MIN(Number(state.z)||132,4,H-4);state.zoom=MIN(Number(state.zoom)||1,.7,1.5);state.quality=[4.5,6,8,11].includes(+state.quality)?+state.quality:6;state.visualMode=['readable','dense'].includes(state.visualMode)?state.visualMode:'readable';state.avatarMode=['sprite','ascii'].includes(state.avatarMode)?state.avatarMode:'sprite'}
+function hydrate(data){const allowed=['seed','x','z','yaw','zoom','day','time','yearDay','health','hunger','killCount','seconds','quality','visualMode','avatarMode','outlineMode','lightingMode','weatherOverride','fireplace'];for(const k of allowed)if(data[k]!==undefined&&data[k]!==null)state[k]=data[k];
+ if(data.inv)state.inv={...RES,...data.inv};if(data.rpg&&typeof data.rpg==='object')state.rpg=mergeRPG(data.rpg);if(data.quest)state.quest={...state.quest,...data.quest};if(data.craft)state.craft={...state.craft,...data.craft};if(data.placed&&Array.isArray(data.placed))state.placed=data.placed.slice(0,1000);if(data.removed)state.removed=data.removed;state.x=MIN(Number(state.x)||128,4,W-4);state.z=MIN(Number(state.z)||132,4,H-4);state.zoom=MIN(Number(state.zoom)||1,.7,1.5);state.quality=[4.5,6,8,11].includes(+state.quality)?+state.quality:6;state.visualMode=['readable','dense'].includes(state.visualMode)?state.visualMode:'readable';state.avatarMode=['sprite','ascii'].includes(state.avatarMode)?state.avatarMode:'sprite';state.outlineMode=['soft','strong','off'].includes(state.outlineMode)?state.outlineMode:'soft';state.lightingMode=['dynamic','flat'].includes(state.lightingMode)?state.lightingMode:'dynamic'}
 function exportSave(){const blob=new Blob([JSON.stringify(cleanSave(),null,2)],{type:'application/json'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`glyphbound-day-${state.day}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast('SAVE FILE EXPORTED')}
 function importSave(e){const file=e.target.files?.[0];if(!file)return;file.text().then(text=>{const data=JSON.parse(text);if(data.version!==1||!data.inv||!Array.isArray(data.placed))throw Error('Invalid Glyphbound save');hydrate(data);generateTerrain();spawnObjects();initCreatures();setQuality(state.quality);refreshUI(true);saveWorld(true);closeDialog();toast('WORLD SAVE IMPORTED')}).catch(()=>toast('COULD NOT IMPORT THIS SAVE FILE'))}
 function frame(t){requestAnimationFrame(frame);const dt=Math.min((t-last)/1000||.016,.09);last=t;if(!state.playing)return;
@@ -617,7 +741,7 @@ function installInputs(){window.addEventListener('keydown',e=>{
 function boot(){net.onChange=refreshCoop;state.rpg=makeRPG();const resumed=loadWorld();generateTerrain();spawnObjects();initCreatures();initRPG();resize();installInputs();cacheColors();updateMinimap();refreshUI(true);
  $('viewport').classList.add('ready');if(resumed){log('Returned to your saved camp in the vale');toast('WORLD RESTORED · WELCOME BACK')}else {log('Your journey begins beneath the birches');toast('WELCOME TO GLYPHBOUND · ESTABLISH YOUR FIRST CAMP')}
  const requestedRoom=new URLSearchParams(location.search).get('room');if(requestedRoom)net.connect(requestedRoom,net.name);refreshCoop();
- requestAnimationFrame(frame);window.GLYPHBOUND_DEBUG={heroMotion,travelerSheet,state,objectsNear,pickNearest,chooseBuild,placeBuild,gather,craftAxe,render,saveWorld,loadWorld,biomeAt,heightAt,recipe:RECIPES,setQuality,openDialog,rpgAttack,rpgFish,rpgPlant,rpgTrade,rpgCraft,rpgTick,rpgJump,rpgSail,rpgSpell,rpgNearbyTrader,findFishSpot,initRPG,cleanSave,hydrate,closeDialog}
+ requestAnimationFrame(frame);window.GLYPHBOUND_DEBUG={heroMotion,travelerSheet,state,renderStats:()=>({lights:localLights.length,edges:visibleEdges,sun:{...solar},shadow:shadowAt(state.x,state.z)}),setTime:t=>{state.time=t;lightQuant=-1;},objectsNear,pickNearest,chooseBuild,placeBuild,gather,craftAxe,render,saveWorld,loadWorld,biomeAt,heightAt,recipe:RECIPES,setQuality,openDialog,rpgAttack,rpgFish,rpgPlant,rpgTrade,rpgCraft,rpgTick,rpgJump,rpgSail,rpgSpell,rpgNearbyTrader,findFishSpot,initRPG,cleanSave,hydrate,closeDialog}
 }
 try{boot()}catch(e){console.error('World initialization failed:',e);$('live-status').textContent='INITIALIZATION ERROR';$('fallback').querySelector('small').textContent='The world could not start. See browser console for details.'}
 })();

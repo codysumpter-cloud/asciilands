@@ -1,4 +1,4 @@
-# Glyphbound — Living ASCII Wilderness (v0.4)
+# Glyphbound — Living ASCII Wilderness (v0.5)
 
 **Play:** `glyphbound.html` is a dependency-free offline browser game. `index.html` + `style.css` + `network.js` + `game.js` are the editable sources.
 
@@ -71,3 +71,7 @@ License for files under this directory: [MIT](LICENSE). No Asciicker code has be
 ## v0.4 visual readability pass
 
 The renderer now defaults to **Readable** terrain (gentler distant glyph contrast, retained 6 px glyph detail) and an original animated four-direction traveler sprite with a high-contrast outline. The player and connected guests have proper pixel-art avatars rather than single-character markers. In Settings, switch to **Dense** to preserve the old full-density ASCII aesthetic or choose **Classic ASCII glyph** for the original player marker. The sprite asset at `assets/traveler.png` is built from the repository-owned editable `scripts/generate_traveler.py`. Offline HTML includes the sprite as embedded PNG data. Original saved games remain compatible.
+
+## v0.5 directional lighting and silhouette pass
+
+Dynamic sun rotates around the world and changes elevation throughout the day. Terrain gradients and tree-canopy normals drive diffuse shading; tree shadow footprints shift with the sun. Campfires and lanterns provide distance-attenuated warm local light, with cool crystal lights. A depth/material-layer edge pass emphasizes object silhouettes and terrain breaks. Background exposure never darkens the player sprite or warm light sources. In Settings you can turn outlines off, strengthen them, or return to classic flat shading. These are **stylized software lighting and projected shadows**, not physically correct GPU shadow mapping, global illumination, or path tracing.
