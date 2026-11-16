@@ -23,7 +23,6 @@
 #btn-boat,#touch-boat{color:#94c7db}#btn-spell,#touch-spell{color:#bfb0f8}
 
 #btn-coop{border:1px solid #4e736f;color:#d9f5e9;background:#18312e}#coop-count{font-size:.64em;opacity:.72;white-space:nowrap}#coop-chat{max-height:175px;overflow-y:auto;margin:12px 0}#coop-chat p{margin:5px 0;overflow-wrap:anywhere}#coop-name,#coop-room,#coop-message{width:100%;padding:10px;color:#edf7ef;background:#111b1a;border:1px solid #45615b;border-radius:6px;min-width:0}.menu-actions:has(#coop-message){display:flex;flex-wrap:nowrap;gap:8px}.menu-actions #coop-message{flex:1}
-
 </style>
 </head>
 <body>
@@ -89,7 +88,6 @@
   try{net.name=saneName(localStorage.getItem('glyphbound_guest_name'))||'Wanderer'}catch{}
   window.GLYPH_NET=net;
 })();
-
 </script><script>
 (()=>{'use strict';
 // GLYPHBOUND 0.2 — expanded standalone survival game. Independently implemented; does NOT contain Asciicker C++ source.
@@ -662,5 +660,4 @@ function boot(){net.onChange=refreshCoop;state.rpg=makeRPG();const resumed=loadW
 }
 try{boot()}catch(e){console.error('World initialization failed:',e);$('live-status').textContent='INITIALIZATION ERROR';$('fallback').querySelector('small').textContent='The world could not start. See browser console for details.'}
 })();
-
 </script></body></html>
