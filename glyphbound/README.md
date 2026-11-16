@@ -1,4 +1,4 @@
-# Glyphbound — Living ASCII Wilderness (v0.3)
+# Glyphbound — Living ASCII Wilderness (v0.4)
 
 **Play:** `glyphbound.html` is a dependency-free offline browser game. `index.html` + `style.css` + `network.js` + `game.js` are the editable sources.
 
@@ -67,3 +67,7 @@ Tests inject resources into an isolated test page to exercise the crafting and c
 See `ASCIICKER_PARITY_AUDIT.md` for the detailed earlier inventory. Further ports should include original MIT attribution and separate validated benchmarks. Do not claim engine parity until it is measured.
 
 License for files under this directory: [MIT](LICENSE). No Asciicker code has been copied into this subproject at this stage.
+
+## v0.4 visual readability pass
+
+The renderer now defaults to **Readable** terrain (gentler distant glyph contrast, retained 6 px glyph detail) and an original animated four-direction traveler sprite with a high-contrast outline. The player and connected guests have proper pixel-art avatars rather than single-character markers. In Settings, switch to **Dense** to preserve the old full-density ASCII aesthetic or choose **Classic ASCII glyph** for the original player marker. The sprite asset at `assets/traveler.png` is built from the repository-owned editable `scripts/generate_traveler.py`. Offline HTML includes the sprite as embedded PNG data. Original saved games remain compatible.
