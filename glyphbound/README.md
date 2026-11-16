@@ -1,4 +1,4 @@
-# Glyphbound — Living ASCII Wilderness (v0.5)
+# Glyphbound — Living ASCII Wilderness (v0.6)
 
 **Play:** `glyphbound.html` is a dependency-free offline browser game. `index.html` + `style.css` + `network.js` + `game.js` are the editable sources.
 
@@ -79,3 +79,11 @@ Dynamic sun rotates around the world and changes elevation throughout the day. T
 ### v0.5.1 — Character scale correction
 
 Player sprites now render about 3.2 ASCII rows tall by default rather than occupying ~20% of the entire screen. Settings → Character scale offers Tiny, World scale (default), and Large accessibility sizes. The size setting persists in saved worlds and old saves use World scale. Peer sprites use smaller world-relative bounds.
+
+## v0.6 terrain and character clarity
+
+- Fixes an architectural bug where unfilled terrain cells exposed the *sky* gradient through sparse glyphs; each terrain ray hit now has an opaque biome-colored background.
+- Adds continuous depth-aware terrain backplates (including natural grass, woodland, sand, stone, marsh, and water colors), darker canopy fills, clearer ground glyph contrast, and a winding natural path near the starting location.
+- Adds a default animated six-column character drawn with ASCII symbols and earth-toned ink, while keeping the original pixel-art sprite available under **Settings → Character art**. Character scale remains configurable.
+- Existing solo saves, co-op rooms, gameplay inventory, crafting, combat, and movement remain backward compatible. This is CPU-based software shading, not a physically-based renderer or an Asciicker C++ port.
+- Test via `python test_palette.py`, `python scripts/verify.py`, and the existing browser integration scripts.

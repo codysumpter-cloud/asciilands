@@ -1,9 +1,9 @@
 (()=>{'use strict';
-// GLYPHBOUND 0.5 — readable 3D ASCII wilderness with dynamic lighting. Independently implemented; does NOT contain Asciicker C++ source.
+// GLYPHBOUND 0.6 — terrain-backed ASCII world with natural light and glyph-integrated characters. Original browser JS, not Asciicker C++.
 const $=id=>document.getElementById(id),canvas=$('scene'),ctx=canvas.getContext('2d',{alpha:false}),view=$('viewport');
 const MIN=(x,a,b)=>Math.max(a,Math.min(b,x)), TAU=Math.PI*2, W=264,H=264, SEA=.06, SAVE_KEY='glyphbound_world_v1';
 const RES={wood:0,stone:0,berry:0,crystal:0,fiber:0,seed:0,meat:0,fish:0,meal:0,hide:0,coin:5};
-const state={visualMode:'readable',avatarMode:'sprite',avatarSize:'world',outlineMode:'soft',lightingMode:'dynamic',seed:91627,x:128,z:132,yaw:0.18,zoom:1,day:1,time:8/24,yearDay:0,health:100,hunger:100,inv:{...RES},craft:{axe:false,workbench:false},placed:[],removed:{},hits:{},quest:{wood:false,stone:false,axe:false,camp:false},fireplace:null,weatherOverride:'auto',quality:6,buildKind:null,buildRotation:0,playing:true,seconds:0,killCount:0,rpg:null};
+const state={visualMode:'readable',avatarMode:'sprite',avatarSize:'world',avatarStyle:'glyph',outlineMode:'soft',lightingMode:'dynamic',seed:91627,x:128,z:132,yaw:0.18,zoom:1,day:1,time:8/24,yearDay:0,health:100,hunger:100,inv:{...RES},craft:{axe:false,workbench:false},placed:[],removed:{},hits:{},quest:{wood:false,stone:false,axe:false,camp:false},fireplace:null,weatherOverride:'auto',quality:6,buildKind:null,buildRotation:0,playing:true,seconds:0,killCount:0,rpg:null};
 const T={MEADOW:0,FOREST:1,SAND:2,ROCK:3,SNOW:4,WATER:5,MARSH:6,PATH:7};
 let heights,biomes,objects=[],buckets=new Map(),creatures=[],particles=[],w=960,h=580,scale=1,cw=5,ch=7,cols=0,rows=0,zbuf,cellMat,cellGlyph,cellShade,cellFog,cellExtras,cellGlow,cellLayer,cellEdge,cellWX,cellWY,cellWZ;
 let last=0,lastRender=0,frameClock=0,fps=0,fpsN=0,uiClock=0,mapClock=0,saveClock=0,toastTime=0,viewDrag=null,drawer=null,projCam=null,nearest=null,lastNotice='The morning sun rises over the vale.',mapDirty=true;
@@ -13,7 +13,10 @@ const pressed=new Set(),touchDir=new Set(),net=window.GLYPH_NET||{status:'offlin
 const G=[' ','.',',',':',';','!','i','/','\\','|','=','+','*','#','%','@','~','^','v','Y','o','x','O','&'];
 const M={sky:0,grass:1,forest:2,sand:3,rock:4,snow:5,water:6,marsh:7,wood:8,leaf:9,pine:10,birch:11,ore:12,berry:13,flower:14,animal:15,player:16,fire:17,shadow:18,build:19,dirt:20,white:21};
 const BASE=[[89,122,117],[103,164,97],[65,123,91],[210,187,128],[132,143,141],[226,233,209],[84,165,194],[89,126,99],[131,101,72],[108,183,89],[68,139,104],[212,199,154],[186,165,111],[228,99,133],[213,172,96],[204,164,125],[241,206,163],[245,152,83],[51,74,56],[201,173,112],[129,118,83],[224,226,195]];
-let colorCache=[],warmCache=[],coolCache=[],lightQuant=-1,fogQuant=-1,nightFactor=1,skyC=[40,76,85];
+let colorCache=[],warmCache=[],coolCache=[],terrainColorCache=[],foliageColorCache=[],lightQuant=-1,fogQuant=-1,nightFactor=1,skyC=[40,76,85];
+const TERRAIN_BASE={1:[46,99,54],2:[32,80,48],3:[155,133,79],4:[89,94,84],5:[178,190,190],6:[38,96,117],7:[51,91,62],20:[118,92,60]};
+const FOLIAGE_BASE={2:[16,55,33],9:[29,70,32],10:[22,59,39],11:[58,80,47]};
+let travelerGlyphSheet=null;
 // The render pipeline keeps world coordinates and depth per glyph. Light and edges are
 // derived from geometry in the CPU cell buffer, not a CSS filter over the screenshot.
 let solar={x:.5,y:.6,z:.6,elevation:.5,direct:.5},localLights=[];
@@ -49,6 +52,9 @@ function generateTerrain(){heights=new Float32Array(W*H);biomes=new Uint8Array(W
     else if(z>180&&wet>.54)b=T.MARSH;
     else if(x<110||z<115||wet>.61)b=T.FOREST;
     if(spawn<10&&y>=SEA)b=T.MEADOW;
+    // A winding readable old path gives the eye a traversable landmark through the vale.
+    const trailX=128+9.8*Math.sin((z-132)*.043)+2.6*Math.sin((z-132)*.105);
+    if(y>SEA+.17 && b!==T.ROCK && b!==T.SNOW && Math.abs(x-trailX)<1.15+.34*noise(x*.23,z*.23,98))b=T.PATH;
     heights[z*W+x]=y;biomes[z*W+x]=b;
   }
 }
@@ -166,14 +172,14 @@ function findEdges(){
 function cacheColors(){const sun=skyLight(),quant=Math.floor(sun*36),wx=weather();
  if(lightQuant===quant&&fogQuant===wx)return;lightQuant=quant;fogQuant=wx;nightFactor=sun;
  const morning=Math.max(0,1-Math.abs(state.time-.27)*13),evening=Math.max(0,1-Math.abs(state.time-.74)*13);
- skyC=mixRGB([18,34,53],wx==='rain'?[91,113,125]:[111,159,191],sun);
+ skyC=mixRGB([22,36,42],wx==='rain'?[100,130,134]:[135,177,198],sun);
  const glow=Math.max(morning,evening)*Math.max(.14,sun);
  skyC=mixRGB(skyC,[207,132,111],glow*.34);
  const fmt=(v)=>`rgb(${v.map(n=>Math.round(MIN(n,0,255))).join(',')})`;
  const renderPalette=(a,mat,s,f)=>{
   const exposure=(.31+sun*.96)*(.56+s/12*.88),fire=mat===M.fire?85:0;
   let rgb=a.map(v=>Math.min(255,v*exposure+fire));
-  rgb=mixRGB(rgb,skyC,f*.07);return rgb;
+  rgb=mixRGB(rgb,skyC,f*.024);return rgb;
  };
  colorCache=BASE.map((a,m)=>Array.from({length:13},(_,shade)=>Array.from({length:5},(_,fog)=>fmt(renderPalette(a,m,shade,fog)))));
  warmCache=BASE.map((a,m)=>Array.from({length:13},(_,shade)=>Array.from({length:5},(_,fog)=>{
@@ -184,6 +190,21 @@ function cacheColors(){const sun=skyLight(),quant=Math.floor(sun*36),wx=weather(
   const c=renderPalette(a,m,shade,fog);
   return Array.from({length:4},(_,level)=>fmt(c.map((v,i)=>MIN(v+(level*8)+(255*(i===2?.10:i===1?.045:0))*level,0,255))));
  })));
+ // Solid earthy backing belongs to terrain; sky color must never leak through grass.
+ // Background, ink, and object silhouettes use the SAME solar intensity and depth.
+ const ambient=.30+sun*.82;
+ terrainColorCache=Array.from({length:22},(_,m)=>Array.from({length:13},(_,shade)=>Array.from({length:5},(_,fog)=>{
+   const base=TERRAIN_BASE[m]||[40,71,49];
+   const illum=ambient*(.68+shade/12*.50);
+   const distance=MIN(fog*.042,0,.17);
+   const light=base.map(v=>v*illum);
+   const horizon=[77,109,100];
+   return fmt(mixRGB(light,horizon,distance));
+ })));
+ foliageColorCache=Array.from({length:22},(_,m)=>Array.from({length:13},(_,shade)=>{
+   const base=FOLIAGE_BASE[m]||[35,65,38];
+   return fmt(base.map(v=>v*(.37+sun*.57)*(.77+shade/12*.5)));
+ }));
 }
 function biomeColor(b){return [['#4c9160','#3a714e'],['#3b7652','#316546'],['#c9b077','#a98f66'],['#949b91','#7c847e'],['#d4dbcd','#a9b8ba'],['#468aa2','#2f6c8e'],['#527e60','#405f4f'],['#806f53','#665d49']][b]||['#4a805a','#3d7551']}
 function resize(){const b=view.getBoundingClientRect(),width=Math.max(250,b.width),height=Math.max(300,b.height);w=Math.round(width);h=Math.round(height);scale=Math.min(2,window.devicePixelRatio||1);canvas.width=Math.round(w*scale);canvas.height=Math.round(h*scale);ctx.setTransform(scale,0,0,scale,0,0);ctx.imageSmoothingEnabled=false;setQuality(state.quality,false);mapDirty=true}
@@ -223,6 +244,7 @@ function traceTerrain(){const c=projCam,aspect=c.aspect,tilt=c.fov;const colorSu
     else if(b===T.SNOW)g=rand>.82?12:rand>.42?2:1;
     else if(b===T.FOREST)g=rand>.8?19:rand>.48?5:rand>.17?3:2;
     else if(b===T.MARSH)g=rand>.67?18:rand>.45?6:rand>.22?3:2;
+    else if(b===T.PATH)g=rand>.8?11:rand>.55?2:rand>.26?1:3;
     else g=rand>.86?18:rand>.63?6:rand>.41?3:rand>.21?2:1;
     if(b!==T.WATER &&rand>.979&&(b===T.MEADOW||b===T.FOREST)) {mat=M.flower;g=12}
     let shade=7;
@@ -329,6 +351,50 @@ function drawWorldObjects(){const objs=objectsNear(projCam.xx,projCam.zz,77);obj
  if(state.avatarMode!=='sprite')drawPlayer();
 }
 // Keep characters at the scale of the surrounding ASCII terrain instead of as screen-sized portraits.
+// Colored terrain backing is the essential world-readability fix: the old renderer
+// showed the *sky* through every sparse grass glyph, turning even land blue.
+function paintTerrainBackdrop(){
+ for(let i=0,n=rows*cols;i<n;i++){
+  if(cellLayer[i]!==1)continue;
+  const x=(i%cols)*cw,y=((i/cols)|0)*ch;
+  const bg=terrainColorCache[cellMat[i]][cellShade[i]][cellFog[i]];
+  ctx.fillStyle=bg;ctx.fillRect(x,y,cw+.65,ch+.65);
+ }
+}
+function paintFoliageBackplates(){
+ for(let i=0,n=rows*cols;i<n;i++){
+  if(cellLayer[i]!==2)continue;
+  const m=cellMat[i];if(m!==M.leaf&&m!==M.forest&&m!==M.pine&&m!==M.birch)continue;
+  ctx.fillStyle=foliageColorCache[m][cellShade[i]];
+  ctx.fillRect((i%cols)*cw,((i/cols)|0)*ch,cw+.65,ch+.65);
+ }
+}
+// The source traveler stays animated, but is redrawn as tiny colored symbols
+// instead of a large smooth PNG sticker pasted on top of the ASCII world.
+function getGlyphTraveler(){
+ if(travelerGlyphSheet)return travelerGlyphSheet;
+ const atlas=document.createElement('canvas');atlas.width=96;atlas.height=128;
+ const paint=atlas.getContext('2d');paint.textAlign='center';paint.textBaseline='middle';
+ paint.font='bold 5px monospace';paint.lineWidth=.65;
+ const faces=[
+  ['  ^^  ',' ^===^','  oo  ','  **  ',' /%%\\ ',' |@@| ','  ||  ',' /  \\ '],
+  ['  ^^  ',' ^===^','  ##  ','  ##  ',' /@@\\ ',' |@@| ','  ||  ',' /  \\ '],
+  ['  ^^  ',' ^=== ','  oo  ','  *#  ',' /%%  ',' |@@  ','  ||  ',' /  \\ '],
+  ['  ^^  ',' ===^ ','  oo  ','  #*  ','  %%\\ ','  @@| ','  ||  ',' /  \\ ']
+ ];
+ const hues={'^':'#b98553','=':'#e2ae74','o':'#e6c08d','*':'#f1e2b4','#':'#493c2f','%':'#90ac67','@':'#537953','/':'#6e5238','\\':'#6e5238','|':'#544834'};
+ for(let dir=0;dir<4;dir++)for(let frame=0;frame<4;frame++)for(let iy=0;iy<8;iy++){
+  const row=faces[dir][iy];for(let ix=0;ix<6;ix++){
+   let symbol=row[ix]||' ';if(symbol===' ')continue;
+   const x=frame*24+ix*4+2,y=dir*32+iy*4+2;
+   if(frame%2&&iy===5&&symbol==='|')symbol='/';
+   if(frame%2&&iy===7&&symbol==='/')symbol='|';
+   paint.strokeStyle='rgba(9,22,16,.9)';paint.strokeText(symbol,x,y);
+   paint.fillStyle=hues[symbol]||'#877953';paint.fillText(symbol,x,y);
+  }
+ }
+ travelerGlyphSheet=atlas;return atlas;
+}
 // 3.2 text cells tall makes the traveler visible without covering trees and paths.
 function spriteScreenHeight(remote=false){
  const userScale={tiny:.72,world:1,large:1.45}[state.avatarSize]||1;
@@ -348,7 +414,8 @@ function drawSpriteAt(wx,wz,jump,direction,label,remote=false){
  const frame=(remote?0:heroMotion.walking)?Math.floor(state.seconds*7.8)%4:0;
  ctx.imageSmoothingEnabled=false;
  ctx.shadowColor='rgba(7,23,24,.88)';ctx.shadowBlur=remote?2:3;
- ctx.drawImage(travelerSheet,frame*24,MIN(direction,0,3)*32,24,32,Math.round(xx-width*.5),Math.round(feet-height),Math.round(width),Math.round(height));
+ const sheet=state.avatarStyle==='glyph'?getGlyphTraveler():travelerSheet;
+ ctx.drawImage(sheet,frame*24,MIN(direction,0,3)*32,24,32,Math.round(xx-width*.5),Math.round(feet-height),Math.round(width),Math.round(height));
  ctx.shadowBlur=0;
  if(!remote && (state.rpg?.equipment?.spear || state.rpg?.equipment?.staff)){
    ctx.strokeStyle=state.rpg.equipment.staff?'#b7a7ec':'#e1b37b';ctx.lineWidth=Math.max(1,height*.045);
@@ -359,13 +426,19 @@ function drawSpriteAt(wx,wz,jump,direction,label,remote=false){
  ctx.textAlign='center';ctx.textBaseline='middle';
  const ty=Math.max(9,feet-height-(remote?7:8));
  const badgeWidth=Math.max(21,ctx.measureText(title).width+10),badgeHeight=13;
- ctx.fillStyle=remote?'rgba(15,33,39,.88)':'rgba(10,29,29,.89)';ctx.fillRect(xx-badgeWidth*.5,ty-badgeHeight*.5,badgeWidth,badgeHeight);
+ ctx.fillStyle=remote?'rgba(15,33,39,.85)':'rgba(16,36,24,.80)';ctx.fillRect(xx-badgeWidth*.5,ty-badgeHeight*.5,badgeWidth,badgeHeight);
  ctx.fillStyle=remote?'#a9daea':'#ffe2a5';ctx.fillText(title,xx,ty);
  ctx.restore();return true;
 }
 function drawOverlay(){ctx.textAlign='center';ctx.textBaseline='middle';ctx.font=`${Math.max(5,state.quality)}px ui-monospace,Menlo,Consolas,monospace`;
  let shown=0;for(let i=0;i<rows*cols;i++){
  const g=cellGlyph[i];if(g===0)continue;
+ // Dither low-priority ground ink instead of letting every grass cell compete
+ // with trees, items, enemies, and the player. The tile remains opaque below.
+ if(state.visualMode==='readable' && cellLayer[i]===1 && cellMat[i]!==M.water){
+   const n=hash((cellWX[i]*2)|0,(cellWZ[i]*2)|0,193);
+   if(n<(cellMat[i]===M.dirt?.68:cellMat[i]===M.grass?.39:cellMat[i]===M.forest?.31:.22))continue;
+ }
  const m=cellMat[i],shade=cellShade[i],fog=cellFog[i];
  let col=colorCache[m][shade][fog];
  if(state.lightingMode!=='flat'&&cellLayer[i]){
@@ -378,9 +451,9 @@ function drawOverlay(){ctx.textAlign='center';ctx.textBaseline='middle';ctx.font
  const xx=((i%cols)+.5)*cw,yy=(((i/cols)|0)+.49)*ch;
  if(state.visualMode==='readable'){
    const depth=zbuf[i],ground=(m===M.grass||m===M.forest||m===M.sand||m===M.rock||m===M.snow||m===M.water||m===M.marsh||m===M.dirt);
-   const fade=MIN(1-Math.max(0,depth-13)/90,.38,1);
-   ctx.globalAlpha=ground?(.53*fade):(.76+.24*fade);
-   if(ground && depth>16 && ((i*17+Math.floor(i/cols)*31)%7===0))ctx.globalAlpha*=.65;
+   const fade=MIN(1-Math.max(0,depth-22)/130,.60,1);
+   ctx.globalAlpha=ground?(.73*fade):(.92+.08*fade);
+   if(ground && depth>48 && ((i*17+Math.floor(i/cols)*31)%11===0))ctx.globalAlpha*=.86;
  }
  if(cellEdge[i]){
   ctx.strokeStyle=cellEdge[i]===2?'rgba(9,20,25,.66)':'rgba(19,32,33,.51)';
@@ -421,7 +494,7 @@ function render(){if(!heights||!canvas.width)return;updateSun();cacheColors();pr
  const gradient=ctx.createLinearGradient(0,0,0,h);gradient.addColorStop(0,top);gradient.addColorStop(.7,bottom);gradient.addColorStop(1,'#253a2f');ctx.fillStyle=gradient;ctx.fillRect(0,0,w,h);
  // Fog and night grading are behind lit geometry so flames and the player's outline remain readable.
  if(nightFactor<.4){ctx.fillStyle=`rgba(4,11,27,${(.4-nightFactor)*.17})`;ctx.fillRect(0,0,w,h)}
- const count=traceTerrain();drawWorldObjects();findEdges();const glyphCount=drawOverlay();
+ const count=traceTerrain();paintTerrainBackdrop();drawWorldObjects();paintFoliageBackplates();findEdges();const glyphCount=drawOverlay();
  return {glyphCount,count,edges:visibleEdges,lights:localLights.length};
 }
 function isTree(o){return o&&['pine','birch','oak'].includes(o.type)}
@@ -661,7 +734,7 @@ function openDialog(type){drawer=type;const name={craft:'CRAFTING & EQUIPMENT',b
  if(type==='map')html='<canvas id="fullmap" class="map-large" width="420" height="420" aria-label="Map of the full procedural world"></canvas><div class="field-note">◇ = your position. The world is procedurally generated from a fixed seed. Blue: water; green: forest; yellow: sand; white: snow. Structures you build remain in the same location after saving.</div>';
  if(type==='help')html=`<div class="help"><p><b>W A S D / arrows</b> — move relative to the camera.<br><b>Shift</b> — sprint.<br><b>Mouse drag / finger drag</b> — orbit the view.<br><b>Mouse wheel</b> — camera zoom.<br><b>Q / Z</b> — rotate view left / right.<br><b>E / Action</b> — harvest nearby resources, tend gardens, or trade.<br><b>R</b> — rotate a build piece. <b>F</b> — attack. <b>V</b> — fish. <b>T</b> — sail raft. <b>K</b> — cast magic. <b>Space</b> — jump.<br><b>C</b> — craft · <b>B</b> — build · <b>I</b> — pack and eat · <b>M</b> — world map.<br><b>Esc</b> — close menu or cancel building.</p><p><b>Your first camp:</b> gather wood and stone, craft the axe, place a campfire. Rest beside a lit campfire with E to restore health. Rain, animal movement, and day/night run on the shared world clock. Each local save remembers what you build and harvest.</p><p><b>Mobile:</b> use the direction pad and Action, or drag the world to orbit. Use the View buttons to adjust the camera.</p></div>`;
  if(type==='coop')html=`<div class="field-note">Optional guest co-op: up to 16 travelers can explore the same seeded terrain, see one another, chat, and place persistent shared structures. Inventories, combat and survival are local (not server-authoritative). Anyone with the room link can join.</div><div class="settings-grid"><label>Your display name<input id="coop-name" maxlength="22" autocomplete="off" placeholder="Wanderer"></label><label>Room code<input id="coop-room" maxlength="24" autocomplete="off" placeholder="forest"></label></div><div class="menu-actions"><button id="coop-join">Join / Create Room</button><button id="coop-leave">Leave</button><button id="coop-share">Copy Invite URL</button></div><p class="field-note" id="coop-status"></p><div class="field-note" id="coop-chat" aria-live="polite"></div><div class="menu-actions"><input id="coop-message" maxlength="140" aria-label="Chat message" placeholder="Say hello..."><button id="coop-send">Send</button></div>`;
- if(type==='settings')html=`<div class="settings-grid"><label>Audio <select id="audio-setting"><option value="off">Muted</option><option value="on">Effects on</option></select></label><label>World readability <select id="visual-setting"><option value="readable">Readable · quiet distant terrain</option><option value="dense">Dense · original full ASCII</option></select></label><label>Outlines <select id="outline-setting"><option value="soft">Soft depth outlines</option><option value="strong">Strong depth outlines</option><option value="off">Off</option></select></label><label>Lighting <select id="lighting-setting"><option value="dynamic">Dynamic sun / local lights</option><option value="flat">Classic flat shading</option></select></label><label>Player appearance <select id="avatar-setting"><option value="sprite">Animated pixel-art sprite</option><option value="ascii">Classic ASCII glyph</option></select></label><label>Character scale <select id="avatar-size-setting"><option value="tiny">Tiny · terrain-scale</option><option value="world">World scale · recommended</option><option value="large">Large · accessibility</option></select></label><label>World glyph size <select id="detail-setting"><option value="4.5">Ultra · 4.5 px</option><option value="6">Fine · 6 px</option><option value="8">Balanced · 8 px</option><option value="11">Classic · 11 px</option></select></label><label>Weather <select id="weather-setting"><option value="auto">Dynamic (recommended)</option><option value="clear">Clear</option><option value="rain">Rain</option><option value="cloudy">Cloudy</option></select></label><label>Camera distance <input id="zoom-setting" type="range" min=".75" max="1.4" step=".05" value="${state.zoom}"></label></div><div class="divider"></div><div class="menu-actions"><button id="save-now">Save now</button><button id="export-now">Export save JSON</button><button id="import-now">Import save JSON</button><button class="danger" id="new-world">Reset world</button></div><div class="field-note">Progress is stored on this browser and origin via localStorage. Export a save file to move your progress to a different browser or device. No login or server account is required.</div><input type="file" accept="application/json,.json" id="save-file" class="sr-only">`;
+ if(type==='settings')html=`<div class="settings-grid"><label>Audio <select id="audio-setting"><option value="off">Muted</option><option value="on">Effects on</option></select></label><label>World readability <select id="visual-setting"><option value="readable">Readable · quiet distant terrain</option><option value="dense">Dense · original full ASCII</option></select></label><label>Outlines <select id="outline-setting"><option value="soft">Soft depth outlines</option><option value="strong">Strong depth outlines</option><option value="off">Off</option></select></label><label>Lighting <select id="lighting-setting"><option value="dynamic">Dynamic sun / local lights</option><option value="flat">Classic flat shading</option></select></label><label>Player appearance <select id="avatar-setting"><option value="sprite">Animated pixel-art sprite</option><option value="ascii">Classic ASCII glyph</option></select></label><label>Character art <select id="avatar-style-setting"><option value="glyph">ASCII sprite · matches world</option><option value="pixel">Classic pixel sprite</option></select></label><label>Character scale <select id="avatar-size-setting"><option value="tiny">Tiny · terrain-scale</option><option value="world">World scale · recommended</option><option value="large">Large · accessibility</option></select></label><label>World glyph size <select id="detail-setting"><option value="4.5">Ultra · 4.5 px</option><option value="6">Fine · 6 px</option><option value="8">Balanced · 8 px</option><option value="11">Classic · 11 px</option></select></label><label>Weather <select id="weather-setting"><option value="auto">Dynamic (recommended)</option><option value="clear">Clear</option><option value="rain">Rain</option><option value="cloudy">Cloudy</option></select></label><label>Camera distance <input id="zoom-setting" type="range" min=".75" max="1.4" step=".05" value="${state.zoom}"></label></div><div class="divider"></div><div class="menu-actions"><button id="save-now">Save now</button><button id="export-now">Export save JSON</button><button id="import-now">Import save JSON</button><button class="danger" id="new-world">Reset world</button></div><div class="field-note">Progress is stored on this browser and origin via localStorage. Export a save file to move your progress to a different browser or device. No login or server account is required.</div><input type="file" accept="application/json,.json" id="save-file" class="sr-only">`;
  $('dialog-body').innerHTML=html;$('drawer').classList.add('open');
  for(const button of $('dialog-body').querySelectorAll('[data-recipe]'))button.addEventListener('click',()=>{if(button.dataset.action==='craft')rpgCraft(button.dataset.recipe);else chooseBuild(button.dataset.recipe)});
  for(const button of $('dialog-body').querySelectorAll('[data-trade]'))button.addEventListener('click',()=>rpgTrade(button.dataset.trade));
@@ -677,10 +750,11 @@ function openDialog(type){drawer=type;const name={craft:'CRAFTING & EQUIPMENT',b
  }
  if(type==='map')drawFullMap();
  if(type==='settings'){
-   $('detail-setting').value=String(state.quality);$('visual-setting').value=state.visualMode;$('avatar-setting').value=state.avatarMode;$('avatar-size-setting').value=state.avatarSize;$('outline-setting').value=state.outlineMode;$('lighting-setting').value=state.lightingMode;$('weather-setting').value=state.weatherOverride;$('audio-setting').value=state.rpg.muted?'off':'on';$('audio-setting').onchange=e=>{state.rpg.muted=e.target.value!=='on';playTone(420,.12);saveWorld(false)};
+   $('detail-setting').value=String(state.quality);$('visual-setting').value=state.visualMode;$('avatar-setting').value=state.avatarMode;$('avatar-size-setting').value=state.avatarSize;$('avatar-style-setting').value=state.avatarStyle;$('outline-setting').value=state.outlineMode;$('lighting-setting').value=state.lightingMode;$('weather-setting').value=state.weatherOverride;$('audio-setting').value=state.rpg.muted?'off':'on';$('audio-setting').onchange=e=>{state.rpg.muted=e.target.value!=='on';playTone(420,.12);saveWorld(false)};
    $('detail-setting').onchange=e=>{setQuality(+e.target.value);saveWorld(false)};
    $('visual-setting').onchange=e=>{state.visualMode=e.target.value;saveWorld(false)};
    $('avatar-setting').onchange=e=>{state.avatarMode=e.target.value;saveWorld(false)};
+   $('avatar-style-setting').onchange=e=>{state.avatarStyle=e.target.value;saveWorld(false)};
    $('avatar-size-setting').onchange=e=>{state.avatarSize=e.target.value;saveWorld(false)};
    $('outline-setting').onchange=e=>{state.outlineMode=e.target.value;saveWorld(false)};
    $('lighting-setting').onchange=e=>{state.lightingMode=e.target.value;saveWorld(false)};
@@ -701,11 +775,11 @@ function drawFullMap(){const c=$('fullmap');if(!c)return;const m=c.getContext('2
  m.putImageData(img,0,0);m.fillStyle='#eed299';m.beginPath();m.arc(state.x/W*c.width,state.z/H*c.height,5,0,TAU);m.fill();m.strokeStyle='#34271a';m.lineWidth=1.4;m.stroke();
  for(const s of state.placed){m.fillStyle='#f5a35e';m.fillRect(s.x/W*c.width-2,s.z/H*c.height-2,4,4)}
 }
-function cleanSave(){return {version:1,seed:state.seed,x:state.x,z:state.z,yaw:state.yaw,zoom:state.zoom,day:state.day,time:state.time,yearDay:state.yearDay,health:state.health,hunger:state.hunger,inv:state.inv,craft:state.craft,quest:state.quest,placed:state.placed,removed:state.removed,fireplace:state.fireplace,killCount:state.killCount,seconds:state.seconds,weatherOverride:state.weatherOverride,quality:state.quality,visualMode:state.visualMode,avatarMode:state.avatarMode,avatarSize:state.avatarSize,outlineMode:state.outlineMode,lightingMode:state.lightingMode,rpg:state.rpg}}
+function cleanSave(){return {version:1,seed:state.seed,x:state.x,z:state.z,yaw:state.yaw,zoom:state.zoom,day:state.day,time:state.time,yearDay:state.yearDay,health:state.health,hunger:state.hunger,inv:state.inv,craft:state.craft,quest:state.quest,placed:state.placed,removed:state.removed,fireplace:state.fireplace,killCount:state.killCount,seconds:state.seconds,weatherOverride:state.weatherOverride,quality:state.quality,visualMode:state.visualMode,avatarMode:state.avatarMode,avatarSize:state.avatarSize,avatarStyle:state.avatarStyle,outlineMode:state.outlineMode,lightingMode:state.lightingMode,rpg:state.rpg}}
 function saveWorld(notify=true){try{localStorage.setItem(SAVE_KEY,JSON.stringify(cleanSave()));$('status-text').textContent='WORLD SAVED';if(notify)toast('WORLD SAVED IN THIS BROWSER')}catch(e){$('status-text').textContent='SAVE UNAVAILABLE';if(notify)toast('BROWSER STORAGE BLOCKED · EXPORT JSON IN SETTINGS')}}
 function loadWorld(){try{const saved=JSON.parse(localStorage.getItem(SAVE_KEY)||'null');if(!saved||saved.version!==1)return false;hydrate(saved);return true}catch(e){return false}}
-function hydrate(data){const allowed=['seed','x','z','yaw','zoom','day','time','yearDay','health','hunger','killCount','seconds','quality','visualMode','avatarMode','avatarSize','outlineMode','lightingMode','weatherOverride','fireplace'];for(const k of allowed)if(data[k]!==undefined&&data[k]!==null)state[k]=data[k];
- if(data.inv)state.inv={...RES,...data.inv};if(data.rpg&&typeof data.rpg==='object')state.rpg=mergeRPG(data.rpg);if(data.quest)state.quest={...state.quest,...data.quest};if(data.craft)state.craft={...state.craft,...data.craft};if(data.placed&&Array.isArray(data.placed))state.placed=data.placed.slice(0,1000);if(data.removed)state.removed=data.removed;state.x=MIN(Number(state.x)||128,4,W-4);state.z=MIN(Number(state.z)||132,4,H-4);state.zoom=MIN(Number(state.zoom)||1,.7,1.5);state.quality=[4.5,6,8,11].includes(+state.quality)?+state.quality:6;state.visualMode=['readable','dense'].includes(state.visualMode)?state.visualMode:'readable';state.avatarMode=['sprite','ascii'].includes(state.avatarMode)?state.avatarMode:'sprite';state.avatarSize=['tiny','world','large'].includes(state.avatarSize)?state.avatarSize:'world';state.outlineMode=['soft','strong','off'].includes(state.outlineMode)?state.outlineMode:'soft';state.lightingMode=['dynamic','flat'].includes(state.lightingMode)?state.lightingMode:'dynamic'}
+function hydrate(data){const allowed=['seed','x','z','yaw','zoom','day','time','yearDay','health','hunger','killCount','seconds','quality','visualMode','avatarMode','avatarSize','avatarStyle','outlineMode','lightingMode','weatherOverride','fireplace'];for(const k of allowed)if(data[k]!==undefined&&data[k]!==null)state[k]=data[k];
+ if(data.inv)state.inv={...RES,...data.inv};if(data.rpg&&typeof data.rpg==='object')state.rpg=mergeRPG(data.rpg);if(data.quest)state.quest={...state.quest,...data.quest};if(data.craft)state.craft={...state.craft,...data.craft};if(data.placed&&Array.isArray(data.placed))state.placed=data.placed.slice(0,1000);if(data.removed)state.removed=data.removed;state.x=MIN(Number(state.x)||128,4,W-4);state.z=MIN(Number(state.z)||132,4,H-4);state.zoom=MIN(Number(state.zoom)||1,.7,1.5);state.quality=[4.5,6,8,11].includes(+state.quality)?+state.quality:6;state.visualMode=['readable','dense'].includes(state.visualMode)?state.visualMode:'readable';state.avatarMode=['sprite','ascii'].includes(state.avatarMode)?state.avatarMode:'sprite';state.avatarSize=['tiny','world','large'].includes(state.avatarSize)?state.avatarSize:'world';state.avatarStyle=['glyph','pixel'].includes(state.avatarStyle)?state.avatarStyle:'glyph';state.outlineMode=['soft','strong','off'].includes(state.outlineMode)?state.outlineMode:'soft';state.lightingMode=['dynamic','flat'].includes(state.lightingMode)?state.lightingMode:'dynamic'}
 function exportSave(){const blob=new Blob([JSON.stringify(cleanSave(),null,2)],{type:'application/json'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`glyphbound-day-${state.day}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast('SAVE FILE EXPORTED')}
 function importSave(e){const file=e.target.files?.[0];if(!file)return;file.text().then(text=>{const data=JSON.parse(text);if(data.version!==1||!data.inv||!Array.isArray(data.placed))throw Error('Invalid Glyphbound save');hydrate(data);generateTerrain();spawnObjects();initCreatures();setQuality(state.quality);refreshUI(true);saveWorld(true);closeDialog();toast('WORLD SAVE IMPORTED')}).catch(()=>toast('COULD NOT IMPORT THIS SAVE FILE'))}
 function frame(t){requestAnimationFrame(frame);const dt=Math.min((t-last)/1000||.016,.09);last=t;if(!state.playing)return;
@@ -748,7 +822,7 @@ function installInputs(){window.addEventListener('keydown',e=>{
 function boot(){net.onChange=refreshCoop;state.rpg=makeRPG();const resumed=loadWorld();generateTerrain();spawnObjects();initCreatures();initRPG();resize();installInputs();cacheColors();updateMinimap();refreshUI(true);
  $('viewport').classList.add('ready');if(resumed){log('Returned to your saved camp in the vale');toast('WORLD RESTORED · WELCOME BACK')}else {log('Your journey begins beneath the birches');toast('WELCOME TO GLYPHBOUND · ESTABLISH YOUR FIRST CAMP')}
  const requestedRoom=new URLSearchParams(location.search).get('room');if(requestedRoom)net.connect(requestedRoom,net.name);refreshCoop();
- requestAnimationFrame(frame);window.GLYPHBOUND_DEBUG={heroMotion,travelerSheet,state,spriteScreenHeight,renderStats:()=>({lights:localLights.length,edges:visibleEdges,sun:{...solar},shadow:shadowAt(state.x,state.z)}),setTime:t=>{state.time=t;lightQuant=-1;},objectsNear,pickNearest,chooseBuild,placeBuild,gather,craftAxe,render,saveWorld,loadWorld,biomeAt,heightAt,recipe:RECIPES,setQuality,openDialog,rpgAttack,rpgFish,rpgPlant,rpgTrade,rpgCraft,rpgTick,rpgJump,rpgSail,rpgSpell,rpgNearbyTrader,findFishSpot,initRPG,cleanSave,hydrate,closeDialog}
+ requestAnimationFrame(frame);window.GLYPHBOUND_DEBUG={heroMotion,travelerSheet,state,spriteScreenHeight,renderStats:()=>({lights:localLights.length,edges:visibleEdges,sun:{...solar},shadow:shadowAt(state.x,state.z),landCells:cellLayer.reduce((n,v)=>n+(v===1),0),glyphSprite:!!travelerGlyphSheet}),setTime:t=>{state.time=t;lightQuant=-1;},objectsNear,pickNearest,chooseBuild,placeBuild,gather,craftAxe,render,saveWorld,loadWorld,biomeAt,heightAt,recipe:RECIPES,setQuality,openDialog,rpgAttack,rpgFish,rpgPlant,rpgTrade,rpgCraft,rpgTick,rpgJump,rpgSail,rpgSpell,rpgNearbyTrader,findFishSpot,initRPG,cleanSave,hydrate,closeDialog}
 }
 try{boot()}catch(e){console.error('World initialization failed:',e);$('live-status').textContent='INITIALIZATION ERROR';$('fallback').querySelector('small').textContent='The world could not start. See browser console for details.'}
 })();
